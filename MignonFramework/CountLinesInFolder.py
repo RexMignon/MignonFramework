@@ -82,13 +82,13 @@ def count_lines_in_single_file(file_path: str):
     """
     if not os.path.isfile(file_path):
         print(f"错误：'{file_path}' 不是一个有效的文件路径。")
-        return
+        return None
 
     line_count = _count_file_lines(file_path)
     if line_count is not None:
         filename = os.path.basename(file_path)
         print(f"文件：'{filename}' 的总行数为：{line_count}")
-
+        return line_count
 # 示例用法
 if __name__ == '__main__':
     # 假设有一个名为 'test_folder' 的文件夹，里面有一些文件

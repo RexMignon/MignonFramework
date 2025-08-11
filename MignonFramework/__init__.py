@@ -7,6 +7,8 @@ Deduplicate 去重
 Logger 日志类
 PortForwarding 端口转发
 Curl2Request Curl转Request
+MysqlManager: 一个健壮的 MySQL 数据库管理器。
+GenericFileProcessor: 一个高度通用的文件到数据库ETL（提取、转换、加载）工具。
 """
 
 

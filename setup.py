@@ -6,12 +6,10 @@ with open("README.md", "r", encoding="utf-8") as fh:
 setuptools.setup(
     name="MignonFramework",
 
-
-    version="0.1.0",
-
+    # 当前版本号
+    version="0.1.3",
 
     author="Mignon Rex",
-
     author_email="rexdpbm@gmail.com",
 
     description="一个为爬虫和后端开发设计的强大Python工具集",
@@ -20,18 +18,18 @@ setuptools.setup(
     long_description_content_type="text/markdown",
 
     url="https://github.com/RexMignon/MignonFramework",
+
     packages=setuptools.find_packages(),
 
-
+    # 项目依赖的第三方库
     install_requires=[
         "requests",
+        "pymysql"
     ],
-
     classifiers=[
         "Development Status :: 3 - Alpha",
 
         "License :: OSI Approved :: MIT License",
-
 
         "Operating System :: OS Independent",
 
@@ -42,6 +40,7 @@ setuptools.setup(
         "Programming Language :: Python :: 3.11",
 
         "Intended Audience :: Developers",
+
         "Topic :: Software Development :: Libraries :: Python Modules",
         "Topic :: Internet :: WWW/HTTP",
         "Topic :: System :: Networking",
