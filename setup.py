@@ -6,13 +6,12 @@ with open("README.md", "r", encoding="utf-8") as fh:
 setuptools.setup(
     name="MignonFramework",
 
-    # 当前版本号
-    version="0.1.3",
+    version="0.1.4",
 
     author="Mignon Rex",
     author_email="rexdpbm@gmail.com",
 
-    description="一个为爬虫和后端开发设计的强大Python工具集",
+    description="一个为爬虫设计的强大Python工具集",
 
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -26,6 +25,7 @@ setuptools.setup(
         "requests",
         "pymysql"
     ],
+
     classifiers=[
         "Development Status :: 3 - Alpha",
 
@@ -38,6 +38,9 @@ setuptools.setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+        "Programming Language :: Python :: 3.14"
 
         "Intended Audience :: Developers",
 

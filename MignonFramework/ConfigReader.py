@@ -139,6 +139,7 @@ if __name__ == '__main__':
         if not config.update_field('last_processed_page', page_number):
             print(f"[{thread_name}] 更新配置失败！")
 
+
     # 实例化一个 ConfigManager 和一个 SequentialScraper
     config = ConfigManager(filename='thread_safe_config.ini')
     from SequentialScraper import SequentialScraper

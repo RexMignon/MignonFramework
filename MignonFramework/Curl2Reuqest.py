@@ -181,9 +181,8 @@ class CurlToRequestsConverter:
         """根据解析后的数据生成 Python requests 代码字符串。"""
         p = self._parsed_data
 
-        lines = ["import requests", "import json", ""]
-        lines.append("# 由 Mignon Rex 的 CurlToRequestsConverter 自动生成")
-        lines.append("# 请根据实际情况检查并修改代码\n")
+        lines = ["import requests", "import json", "", "# 由 Mignon Rex 的 MignonFramework.CurlToRequestsConverter 生成",
+                 "# Have a good Request\n"]
 
         if p['headers']:
             lines.append(f"headers = {json.dumps(p['headers'], indent=4, ensure_ascii=False)}\n")
@@ -215,16 +214,26 @@ class CurlToRequestsConverter:
             lines.append(f"auth = {p['auth']}\n")
 
         request_params = ['url']
-        if p['headers']: request_params.append("headers=headers")
-        if p['cookies']: request_params.append("cookies=cookies")
-        if p['params']: request_params.append("params=params")
-        if p['json'] is not None: request_params.append("json=json_data")
-        elif p['data'] is not None: request_params.append("data=data")
-        if p['files']: request_params.append("files=files") # 新增
-        if p['auth']: request_params.append("auth=auth") # 新增
-        if p['proxies']: request_params.append(f"proxies={p['proxies']}")
-        if not p['verify']: request_params.append("verify=False")
-        if p['timeout'] is not None: request_params.append(f"timeout={p['timeout']}")
+        if p['headers']:
+            request_params.append("headers=headers")
+        if p['cookies']:
+            request_params.append("cookies=cookies")
+        if p['params']:
+            request_params.append("params=params")
+        if p['json'] is not None:
+            request_params.append("json=json_data")
+        elif p['data'] is not None:
+            request_params.append("data=data")
+        if p['files']:
+            request_params.append("files=files") # 新增
+        if p['auth']:
+            request_params.append("auth=auth") # 新增
+        if p['proxies']:
+            request_params.append(f"proxies={p['proxies']}")
+        if not p['verify']:
+            request_params.append("verify=False")
+        if p['timeout'] is not None:
+            request_params.append(f"timeout={p['timeout']}")
 
         request_params_str = ',\n    '.join(request_params)
 
@@ -244,11 +253,11 @@ class CurlToRequestsConverter:
             py_code = self._generate_python_code()
             with open(self._output_filename, 'w', encoding='utf-8') as f:
                 f.write(py_code)
-            print(f"✅ 转换成功！已将代码保存到文件: '{self._output_filename}'")
+            print(f"转换成功！已将代码保存到文件: '{self._output_filename}'")
         except (ValueError, FileNotFoundError, IOError) as e:
-            print(f"❌ 转换失败: {e}")
+            print(f"转换失败: {e}")
         except Exception as e:
-            print(f"❌ 发生未知错误: {e}")
+            print(f"发生未知错误: {e}")
 
 
 # --- 示例用法 ---

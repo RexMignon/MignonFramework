@@ -1,5 +1,5 @@
 MignonFramework
-MignonFramework 是由 Mignon Rex 开发的一个强大而灵活的 Python 工具集，旨在为爬虫工程师和后端开发者提供一系列高效、便捷的实用工具。
+MignonFramework 是由 Mignon Rex 与Google Gemini 协同开发的一个强大而灵活的 Python 工具集，旨在为爬虫工程师和后端开发者提供一系列高效、便捷的实用工具。
 
 这个框架整合了多种常用功能，从网络请求转换到文件处理，再到数据库和配置管理，是你日常开发中的得力助手。
 
@@ -8,9 +8,9 @@ MignonFramework 包含了以下核心模块：
 
 Curl2Request: 一个强大的 cURL 命令转换器，可以轻松将从浏览器复制的 cURL 命令转换为功能完整的 Python requests 代码，支持表单、认证、Cookies 等多种复杂场景。
 
-MysqlManager: 一个健壮的 MySQL 数据库管理器。它封装了数据库的连接、关闭、以及高效的批量“更新或插入”（Upsert）操作，并通过上下文管理器（with语句）简化了资源管理，确保连接的自动关闭。
+MysqlManager: 一个健壮的 MySQL 数据库管理器，实现了 BaseWriter 接口。它封装了数据库的连接、关闭、以及高效的批量“更新或插入”（Upsert）操作，并通过上下文管理器（with语句）简化了资源管理。
 
-GenericFileProcessor: 一个高度通用的文件到数据库ETL（提取、转换、加载）工具。它通过一个统一的 run() 方法，可以智能处理单个文件或整个目录，支持“整文件JSON”和“逐行JSON”两种模式，并提供了断点续传、可视化进度条和事件回调等高级功能。
+GenericFileProcessor: 一个高度通用的文件到数据库ETL（提取、转换、加载）工具。它通过一个统一的 run() 方法，可以智能处理单个文件或整个目录，支持“整文件JSON”和“逐行JSON”两种模式，并提供了断点续传、可视化进度条、事件回调、数据过滤和高级错误处理等功能。
 
 ConfigReader: 线程安全的配置文件管理器，简化 .ini 文件的读取和写入操作。
 
@@ -53,39 +53,44 @@ print(python_code)
 示例 2: GenericFileProcessor
 使用 GenericFileProcessor 轻松将大文件导入数据库：
 
-from MignonFramework import MysqlManager, GenericFileProcessor
+from MignonFramework import MysqlManager, GenericFileProcessor, Rename
 from datetime import datetime
 
 # 1. 定义数据库配置
 db_config = {"host": "localhost", "user": "root", "password": "your_password", "database": "your_db"}
 
-# 2. 定义一个修改器函数，在自动解析后对数据进行微调
-#    处理器会自动将 ProjectTitleOriginal 转换为 project_title_original
-def advanced_modifier(json_data: dict) -> dict:
-# 例如，给项目标题加上前缀，并添加一个自定义的处理时间戳字段
+# 2. 定义一个优雅的修改器函数，在自动解析后对数据进行微调
+def modifier(dic: dict) -> dict:
 return {
-"ProjectTitleOriginal": "【Mignon框架处理】" + json_data.get("ProjectTitleOriginal", ""),
-"ProcessedAt": {
-"key": "processed_at_custom",
-"value": datetime.now().isoformat()
-}
-}
+# 场景1: 只重命名 (值来自源文件)
+"ProjectGrantNo": Rename("project_grant_number"),
+
+        # 场景2: 只修改值 (键名自动转为 snake_case)
+        "ProjectTitleOriginal": "【Mignon处理】" + dic.get("ProjectTitleOriginal", ""),
+
+        # 场景3: 同时重命名和赋值
+        "Source": ("data_source_custom", "来自Mignon框架"),
+
+        # 场景4: 添加新字段 (键名自动转为 snake_case)
+        "processedTime": datetime.now().isoformat()
+    }
 
 # 3. 定义一个回调函数，用于记录每批处理的状态
 def log_callback(status, data, filename, line_num):
-print(f"批处理完成: 文件 '{filename}' 行号 {line_num}, 状态: {'成功' if status else '失败'}")
+print(f"\n批处理完成: 文件 '{filename}' 行号 {line_num}, 状态: {'成功' if status else '失败'}")
 
 # 4. 使用 with 语句自动管理数据库连接
 with MysqlManager(**db_config) as db:
 if db.is_connected():
 # 初始化处理器
 processor = GenericFileProcessor(
-db_manager=db,
+writer=db,
 table_name="project_info",
-modifier_function=advanced_modifier, # 使用 modifier_function 进行高级定制
+modifier_function=modifier, # 使用 modifier_function 进行高级定制
 mode='line',  # 按行处理文件
 batch_size=5000,
-callBack=log_callback
+callBack=log_callback,
+print_mapping_table=True # 推荐开启，用于调试
 )
 
         # 运行处理器，并从第10001行开始（断点续传）
