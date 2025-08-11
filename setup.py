@@ -6,7 +6,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 setuptools.setup(
     name="MignonFramework",
 
-    version="0.1.4",
+    version="0.1.5.0",
 
     author="Mignon Rex",
     author_email="rexdpbm@gmail.com",
@@ -40,7 +40,6 @@ setuptools.setup(
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
         "Programming Language :: Python :: 3.13",
-        "Programming Language :: Python :: 3.14"
 
         "Intended Audience :: Developers",
 
@@ -51,3 +50,6 @@ setuptools.setup(
 
     python_requires='>=3.8',
 )
+
+# python setup.py sdist bdist_wheel
+# python -m twine upload dist/*

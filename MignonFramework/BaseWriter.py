@@ -7,7 +7,7 @@ class BaseWriter(ABC):
     所有自定义写入器（如CSVWriter, MongoWriter等）都应继承此类并实现 upsert_batch 方法。
     """
     @abstractmethod
-    def upsert_batch(self, data_list: list[dict[str, any]], table_name: str) -> bool:
+    def upsert_batch(self, data_list: list[dict[str, any]], table_name: str, test: bool) -> bool:
         """
         将一批处理好的数据写入目标。
 
@@ -17,5 +17,8 @@ class BaseWriter(ABC):
 
         Returns:
             bool: 写入成功返回True，否则返回False。
+            :param data_list:
+            :param table_name:
+            :param test:
         """
         pass

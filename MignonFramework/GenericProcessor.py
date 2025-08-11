@@ -49,7 +49,7 @@ class GenericFileProcessor:
         初始化处理器。
 
         Args:
-            writer (BaseWriter, optional): 数据写入器实例。如果为None，将尝试从配置文件加载MysqlManager。
+            writer (BaseWriter, optional): 数据写入器实例。如果为None，将尝试从配置文件加载。
             table_name (str, optional): 目标表名。如果为None，将尝试从配置文件加载。
             mode (str): 文件处理模式。可选值为 'line' (默认) 或 'file'。
             modifier_function (Callable, optional): 自定义修改函数。
@@ -62,13 +62,17 @@ class GenericFileProcessor:
             on_error (str): 错误处理策略 ('continue', 'stop', 'log_to_file')。
         """
         self.is_ready = True
+        self.config_manager = ConfigManager(filename='./resources/config/generic.ini', section='GenericProcessor')
         self.path_from_config = None
+        self.test = False  # 初始化test属性
 
-        if writer is None:
+        # 优先使用代码中传入的 writer 和 table_name
+        self.writer = writer
+        self.table_name = table_name
+
+        # 如果代码中未提供，则尝试从配置文件加载
+        if self.writer is None or self.table_name is None:
             self._init_from_config()
-        else:
-            self.writer = writer
-            self.table_name = table_name
 
         if not self.is_ready:
             return
@@ -90,44 +94,52 @@ class GenericFileProcessor:
 
     def _init_from_config(self):
         """从配置文件初始化处理器。如果配置不完整，则引导用户创建。"""
-        config = ConfigManager(filename='./resources/config/generic.ini', section='GenericProcessor')
-        config_data = config.get_all_fields()
-        required_keys = ['host', 'user', 'password', 'database', 'table_name', 'path']
+        config_data = self.config_manager.get_all_fields()
 
-        if config_data is None or any(
-                not config_data.get(key) or 'YOUR_' in str(config_data.get(key)) for key in required_keys):
-            print("\n" + "=" * 60)
-            print("🚀 欢迎使用 GenericFileProcessor 零配置向导！")
-            print("处理器检测到配置不完整，将为您创建或更新配置文件。")
-            print(f"配置文件路径: {os.path.abspath('./resources/config/generic.ini')}")
-            print("请在该文件中填写您的数据库信息和要处理的文件路径。")
-            print("=" * 60 + "\n")
+        # 仅在代码未提供 writer 时才尝试从配置创建
+        if self.writer is None:
+            db_keys = ['host', 'user', 'password', 'database']
+            if config_data and all(config_data.get(k) and 'YOUR_' not in str(config_data.get(k)) for k in db_keys):
+                db_config = {k: config_data[k] for k in db_keys}
+                self.writer = MysqlManager(**db_config)
+                if not self.writer.is_connected():
+                    print(f"[ERROR] 使用 generic.ini 中的配置连接数据库失败。")
+                    self.is_ready = False
+                    return
+            else:
+                self._guide_user_to_config()
+                return
 
-            placeholders = {
-                'host': 'YOUR_DATABASE_HOST',
-                'user': 'YOUR_USERNAME',
-                'password': 'YOUR_PASSWORD',
-                'database': 'YOUR_DATABASE_NAME',
-                'table_name': 'YOUR_TARGET_TABLE',
-                'path': 'PATH_TO_YOUR_FILE_OR_DIRECTORY'
-            }
-            for key in required_keys:
-                if not config_data or not config_data.get(key) or 'YOUR_' in str(config_data.get(key)):
-                    config.update_field(key, placeholders[key])
+        # 仅在代码未提供 table_name 时才尝试从配置获取
+        if self.table_name is None:
+            if config_data and config_data.get('table_name') and 'YOUR_' not in str(config_data.get('table_name')):
+                self.table_name = config_data['table_name']
+            else:
+                self._guide_user_to_config()
+                return
 
-            self.is_ready = False
-            return
+        # 尝试获取路径作为备用
+        if config_data and config_data.get('path') and 'YOUR_' not in str(config_data.get('path')):
+            self.path_from_config = config_data['path']
 
-        db_config = {k: config_data[k] for k in ['host', 'user', 'password', 'database']}
-        # 默认使用 MysqlManager 作为写入器
-        self.writer = MysqlManager(**db_config)
-        if not self.writer.is_connected():
-            print(f"[ERROR] 使用 generic.ini 中的配置连接数据库失败。")
-            self.is_ready = False
-            return
+    def _guide_user_to_config(self):
+        """引导用户填写配置文件。"""
+        print("\n" + "=" * 60)
+        print("处理器检测到配置不完整，将为您创建或更新配置文件。")
+        print(f"配置文件路径: {os.path.abspath('./resources/config/generic.ini')}")
+        print("请在该文件中填写您的数据库信息和要处理的文件路径。")
+        print("=" * 60 + "\n")
 
-        self.table_name = config_data['table_name']
-        self.path_from_config = config_data['path']
+        placeholders = {
+            'host': 'YOUR_DATABASE_HOST', 'user': 'YOUR_USERNAME', 'password': 'YOUR_PASSWORD',
+            'database': 'YOUR_DATABASE_NAME', 'table_name': 'YOUR_TARGET_TABLE',
+            'path': 'PATH_TO_YOUR_FILE_OR_DIRECTORY'
+        }
+        for key, value in placeholders.items():
+            if not self.config_manager.get_field(key) or 'YOUR_' in str(self.config_manager.get_field(key)):
+                self.config_manager.update_field(key, value)
+
+        self.is_ready = False
 
     def _to_snake_case(self, name: str) -> str:
         if not isinstance(name, str) or not name:
@@ -142,7 +154,6 @@ class GenericFileProcessor:
             try:
                 return ast.literal_eval(text)
             except (ValueError, SyntaxError, MemoryError, TypeError):
-                print("AAAA")
                 return None
 
     def _finalize_types(self, data_dict: dict) -> dict:
@@ -156,27 +167,27 @@ class GenericFileProcessor:
                 final_data[key] = value
         return final_data
 
-    def _process_single_item(self, json_data: dict) -> Optional[Dict]:
-        # 步骤 1: 创建一个应用了默认值的基础字典
+    def _process_single_item(self, json_data: dict, temp_exclude_keys=None, temp_default_values=None) -> Optional[Dict]:
+        # 合并初始配置和临时配置
+        current_excludes = self.exclude_keys.union(temp_exclude_keys or set())
+        current_defaults = {**self.default_values, **(temp_default_values or {})}
+
         data_with_defaults = {}
-        all_original_keys = set(json_data.keys()) | set(self.default_values.keys())
+        all_original_keys = set(json_data.keys()) | set(current_defaults.keys())
         for key in all_original_keys:
             value = json_data.get(key)
-            # 修正：如果源值是None或空字符串，并且存在默认值，则使用默认值
-            if (value is None or value == '') and key in self.default_values:
-                data_with_defaults[key] = self.default_values[key]
+            if (value is None or value == '') and key in current_defaults:
+                data_with_defaults[key] = current_defaults[key]
             else:
                 data_with_defaults[key] = value
 
-        # 步骤 2: 基于融合了默认值的数据进行自动解析
         parsed_data = {}
         for original_key, final_value in data_with_defaults.items():
-            if original_key in self.exclude_keys:
+            if original_key in current_excludes:
                 continue
             new_key = self._to_snake_case(original_key)
             parsed_data[new_key] = final_value
 
-        # 步骤 3: 将融合了默认值的数据传递给修改器，并应用“补丁”
         if self.modifier_function:
             patch_dict = self.modifier_function(data_with_defaults)
             for original_key, instruction in patch_dict.items():
@@ -191,7 +202,6 @@ class GenericFileProcessor:
                 else:
                     parsed_data[auto_key] = instruction
 
-        # 步骤 4: 对最终结果进行类型转换
         return self._finalize_types(parsed_data)
 
     def _execute_batch(self, json_list: List[Dict], filename: str, line_num: Optional[int] = None):
@@ -200,7 +210,7 @@ class GenericFileProcessor:
         f = io.StringIO()
         status = False
         with redirect_stdout(f):
-            status = self.writer.upsert_batch(json_list, self.table_name)
+            status = self.writer.upsert_batch(json_list, self.table_name, test=self.test)
         captured_output = f.getvalue().strip()
         if self.callBack:
             try:
@@ -220,12 +230,10 @@ class GenericFileProcessor:
         print(header)
         print("-" * (sum(col_widths) + 7))
 
-        # 同样，先融合默认值，以确保修改器能看到它们
         sample_with_defaults = {}
         all_sample_keys = set(sample_json.keys()) | set(self.default_values.keys())
         for key in all_sample_keys:
             value = sample_json.get(key)
-            # 修正：同样应用更严格的默认值逻辑
             if (value is None or value == '') and key in self.default_values:
                 sample_with_defaults[key] = self.default_values[key]
             else:
@@ -268,14 +276,123 @@ class GenericFileProcessor:
     def _get_display_width(self, s: str) -> int:
         return sum(2 if '\u4e00' <= char <= '\u9fff' else 1 for char in s)
 
-    def run(self, path: Optional[str] = None, start_line: int = 1):
+    def _find_original_key(self, snake_key: str, sample_json: dict) -> Optional[str]:
+        """根据snake_case键反查原始键。"""
+        # 优先在样本数据中查找
+        for key in sample_json.keys():
+            if self._to_snake_case(key) == snake_key:
+                return key
+        # 如果找不到，再在默认值里找
+        for key in self.default_values.keys():
+            if self._to_snake_case(key) == snake_key:
+                return key
+        return None
+
+    def _run_test_mode(self, file_path: str):
+        """执行测试模式，自动诊断并建议修复方案。"""
+        print("\n--- 启动测试模式 ---")
+        print(f"将使用文件 '{os.path.basename(file_path)}' 的第一批数据进行测试...")
+
+        raw_json_batch = []
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if len(raw_json_batch) >= self.batch_size:
+                        break
+                    if line.strip():
+                        if json_data := self._safe_json_load(line):
+                            raw_json_batch.append(json_data)
+        except Exception as e:
+            print(f"[ERROR] 读取测试文件时失败: {e}")
+            return
+
+        if not raw_json_batch:
+            print("[ERROR] 未能在文件中找到有效的JSON数据进行测试。")
+            return
+
+        suggested_excludes = set()
+        suggested_defaults = {}
+        attempt = 0
+
+        while True:
+            attempt += 1
+            print(f"\n--- 第 {attempt} 次尝试 ---")
+
+            prev_excludes_len = len(suggested_excludes)
+            prev_defaults_len = len(suggested_defaults)
+
+            try:
+                processed_batch = [self._process_single_item(item, suggested_excludes, suggested_defaults) for item in
+                                   raw_json_batch]
+                processed_batch = [item for item in processed_batch if item is not None]
+
+                self._execute_batch(processed_batch, os.path.basename(file_path))
+
+                print("  [成功] 当前配置有效，测试通过！")
+                break
+            except Exception as e:
+                error_code = e.args[0] if isinstance(e.args, tuple) and len(e.args) > 0 else 0
+                error_message = str(e)
+
+                # 处理未知列错误
+                if error_code == 1054:
+                    match = re.search(r"Unknown column '(.+?)'", error_message)
+                    if match:
+                        col = match.group(1)
+                        original_key = self._find_original_key(col, raw_json_batch[0])
+                        if original_key and original_key not in suggested_excludes:
+                            print(f"  [诊断] 发现未知列 '{col}'，对应源字段 '{original_key}'。")
+                            suggested_excludes.add(original_key)
+                            print(f"  [操作] 将 '{original_key}' 加入建议排除列表。")
+                            continue
+
+                # 处理错误日期值
+                if error_code == 1292:
+                    # 修正正则表达式以匹配空字符串
+                    match = re.search(r"Incorrect date value: '.*?' for column '(.+?)'", error_message)
+                    if match:
+                        col = match.group(1)
+                        original_key = self._find_original_key(col, raw_json_batch[0])
+                        if original_key and original_key not in suggested_defaults:
+                            print(f"  [诊断] 发现无效日期值，列 '{col}'，对应源字段 '{original_key}'。")
+                            suggested_defaults[original_key] = datetime.now()
+                            print(f"  [操作] 为 '{original_key}' 加入建议的默认日期。")
+                            continue
+
+                # 如果没有取得任何进展，则中止
+                if len(suggested_excludes) == prev_excludes_len and len(suggested_defaults) == prev_defaults_len:
+                    print(f"  [失败] 无法自动修复，测试中止。最终错误: {e}")
+                    break
+
+        print("\n" + "=" * 60)
+        print("--- 测试模式总结与配置建议 ---")
+        if suggested_excludes:
+            print("\n建议的 `exclude_keys` 列表:")
+            print(f"exclude_keys = {list(suggested_excludes)}")
+        else:
+            print("\n未发现需要排除的字段。")
+
+        if suggested_defaults:
+            print("\n建议的 `default_values` 字典 (日期将是运行时的时间):")
+            defaults_str = {k: str(v) for k, v in suggested_defaults.items()}
+            print(f"default_values = {defaults_str}")
+        else:
+            print("\n未发现需要设置默认值的日期字段。")
+        print("=" * 60 + "\n")
+
+    def run(self, path: Optional[str] = None, start_line: int = 1, test: bool = False):
         if not self.is_ready:
             print("[INFO] 处理器尚未就绪，请根据提示完成配置后再次运行。")
             return
 
+        self.test = test  # 将 test 状态保存到实例
+
         target_path = path if path is not None else self.path_from_config
         if not target_path or not os.path.exists(target_path):
-            print(f"[ERROR] 目标路径无效或不存在: {target_path}")
+            if path is None and self.path_from_config is None:
+                self._guide_user_to_config()
+            else:
+                print(f"[ERROR] 目标路径无效或不存在: {target_path}")
             return
 
         files_to_process = [os.path.join(target_path, f) for f in os.listdir(target_path) if
@@ -284,6 +401,10 @@ class GenericFileProcessor:
 
         if not files_to_process:
             print(f"在路径 '{target_path}' 中未找到可处理的文件。")
+            return
+
+        if test:
+            self._run_test_mode(files_to_process[0])
             return
 
         if self.print_mapping_table:
@@ -345,7 +466,7 @@ class GenericFileProcessor:
 
                                 if total_lines > 0:
                                     bar = '█' * int(40 * line_num / total_lines) + '-' * (
-                                            40 - int(40 * line_num / total_lines))
+                                                40 - int(40 * line_num / total_lines))
                                     sys.stdout.write(
                                         f'\r|{bar}| {line_num / total_lines:.1%} ({line_num}/{total_lines})  本批: [{len(json_list)}/{self.batch_size}]')
                                     sys.stdout.flush()
@@ -362,7 +483,7 @@ class GenericFileProcessor:
                                         err_f.write(
                                             f"{datetime.now()} | {filename} | Line {line_num} | {parse_e}\n{line}\n")
                                 print(error_msg)
-                                print(f"  [FAILING LINE]: {line.strip()}")  # 打印失败的行
+                                print(f"  [FAILING LINE]: {line.strip()}")
                     print()
                     self._execute_batch(json_list, filename, line_num)
                 print(f"  [成功] 文件已处理。")
@@ -373,40 +494,73 @@ class GenericFileProcessor:
 
 
 if __name__ == '__main__':
-    from MignonFramework import GenericProcessor
-    from datetime import datetime
-    from MignonFramework.GenericProcessor import Rename
+    # --------------------------------------------------------------------------
+    #  这是一个自包含的演示，用于展示 GenericFileProcessor 的核心功能。
+    # --------------------------------------------------------------------------
+
+    # --- 场景1: "零配置" 智能向导 ---
+    # 如果您直接运行 GenericFileProcessor().run()，且没有配置好 generic.ini 文件，
+    # 它会自动创建并引导您填写必要信息。
+    # ---------------------------------
+    # print("--- 演示场景 1: 零配置启动 ---")
+    # GenericFileProcessor().run() # 首次运行会创建配置文件并退出
+    # print("-" * 30)
 
 
-    def parseJson(dic: dict) -> dict:
+    # --- 场景2: "全功能" 高级定制 ---
+    # 这是一个更完整的示例，展示了框架的各项高级功能。
+    # -----------------------------------
+    print("\n--- 演示场景 2: 全功能高级定制 ---")
+
+    class MockWriter(BaseWriter):
+        def upsert_batch(self, data_list: List[Dict[str, Any]], table_name: str, test: bool = False) -> bool:
+            print(f"\n--- MockWriter 接收到一批送往 '{table_name}' 的数据 (共 {len(data_list)} 条) ---")
+            for i, item in enumerate(data_list):
+                print(f"  记录 {i+1}: {item}")
+            print("--- 数据批处理结束 ---\n")
+            return True
+    # 可以继承BaseWriter实现upsert_batch, 可以转为CSVManager, 也可以用默认的MySQLManager
+
+    TEST_FILE_NAME = "demo_data.txt"
+    with open(TEST_FILE_NAME, "w", encoding="utf-8") as f:
+        f.write('{"userName": "Mignon", "userAge": 30, "userProfile": {"city": "Shanghai"}, "joinDate": "2023-01-01"}\n')
+        f.write('{"userName": "Rex", "userAge": 28, "isActive": false, "joinDate": ""}\n')
+        f.write('{"userName": "Gemini", "userProfile": null}\n')
+        f.write('{"userName": "SkippedUser", "userAge": 99}\n')
+
+    # 3. 修改器函数
+    def modifier(data: dict) -> dict:
         return {
-            "PlanEndDate": Rename("plan_end_date"),  # 仅改名用来对应字段
-            "Fundingfloat": Rename("funding_float"),
-            "Budgetfloat": ("budget_floats", dic.get("Budgetfloat")), # 改名同时修改逻辑(或新增)
-            "Fundingfloats": dic.get("Fundingfloat") # 仅改逻辑
+            "userName": Rename("name"), # 只重命名
+            "userAge": ("age_in_years", data.get("userAge", 0) + 1), # 重命名并修改值
+            "isActive": True, # 只修改值
+            "processedBy": "MignonFramework" # 添加新字段
         }
 
-
-    def filterFun(dicts: dict, lineNo) -> bool:
-        # 过滤器方法 解析后执行, 当且仅当返回True时才会insert
+    # 4. 定义一个过滤器函数 (跳过特定用户和第一行)
+    def user_filter(data: dict, line_num: int) -> bool:
+        if line_num == 1:
+            print(f"\n[INFO] 过滤器在第 {line_num} 行跳过了表头（假设）")
+            return False
+        if data.get("userName") == "SkippedUser":
+            print(f"\n[INFO] 过滤器在第 {line_num} 行跳过了 'SkippedUser'")
+            return False
         return True
 
-    # 默认值
-    defaultVal = {
-        "PlanEndDate": datetime.now(),
-        "CompleteDate": datetime.now(),
-        "StartYear": "2025",
-        "Fundingfloat": 0.0,
-        "Budgetfloat": 0.0,
-        "PlanStartDate": datetime.now(),
-        "ApplyYear": "2025",
-        "has_outcome": True
-    }
+    # 5. 初始化并运行处理器(均为可选)
+    processor = GenericFileProcessor(
+        writer=MockWriter(),
+        table_name="users",
+        mode='line',
+        modifier_function=modifier,
+        filter_function=user_filter,
+        default_values={"userProfile": {"city": "Unknown"}, "joinDate": datetime.now()},
+        exclude_keys=["isActive"], # 注意：即使排除了，modifier 仍然可以覆盖它
+        print_mapping_table=True,
+        batch_size=2 # 设置小批量以便观察
+    )
 
-    # 排除字段
-    exclude = [
-        "ForCodeForSearchs", "outComes", "AwardeeOrgState", "projectAbstract"
-    ]
+    processor.run(path=TEST_FILE_NAME)
 
-    GenericProcessor.GenericFileProcessor(modifier_function=parseJson, default_values=defaultVal, filter_function=filterFun,
-                                          exclude_keys=exclude).run()
+    # 6. 清理临时文件
+    os.remove(TEST_FILE_NAME)

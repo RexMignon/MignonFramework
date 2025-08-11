@@ -5,7 +5,6 @@ MysqlManager: 一个健壮的 MySQL 数据库管理器。它封装了数据库�
 import pymysql
 import pymysql.cursors
 from typing import List, Dict, Any, Optional
-from abc import ABC, abstractmethod
 from MignonFramework.BaseWriter import BaseWriter
 
 
@@ -44,7 +43,7 @@ class MysqlManager(BaseWriter):
         """
         try:
             connection = pymysql.connect(**self.db_config)
-            print("数据库连接成功！")
+            # print("数据库连接成功！") # 在框架中通常静默处理
             return connection
         except pymysql.MySQLError as e:
             print(f"数据库连接失败: {e}")
@@ -66,12 +65,12 @@ class MysqlManager(BaseWriter):
         if self.connection:
             try:
                 self.connection.close()
-                print("数据库连接已关闭。")
                 self.connection = None
             except pymysql.MySQLError as e:
                 print(f"关闭连接时发生错误: {e}")
+                raise e
 
-    def upsert_batch(self, data_list: List[Dict[str, Any]], table_name: str) -> bool:
+    def upsert_batch(self, data_list: List[Dict[str, Any]], table_name: str, test: bool = False) -> bool:
         """
         将数据字典列表批量插入或更新到数据库中 (Upsert)。
         这是 BaseWriter 接口的实现。
@@ -80,7 +79,6 @@ class MysqlManager(BaseWriter):
             print("错误：数据库未连接，无法执行更新/插入操作。")
             return False
         if not data_list:
-            # 即使列表为空，也应视为“成功”的无操作
             return True
 
         columns = list(data_list[0].keys())
@@ -96,15 +94,18 @@ class MysqlManager(BaseWriter):
 
         try:
             with self.connection.cursor() as cursor:
-                affected_rows = cursor.executemany(sql, values)
-            self.connection.commit()
-            # print(f"成功批量插入/更新 {affected_rows} 条数据到表 '{table_name}'。")
+                cursor.executemany(sql, values)
+
+            # 关键：在测试模式下，不提交事务
+            if not test:
+                self.connection.commit()
+
             return True
         except pymysql.MySQLError as e:
-            print(f"批量插入/更新失败: {e}")
+            # 即使在测试模式下，也回滚以清理事务状态
             self.connection.rollback()
-            # 根据接口定义，失败时返回False
-            return False
+            # 重新抛出异常，以便上层（GenericFileProcessor）可以捕获并进行智能分析
+            raise e
 
     def __enter__(self):
         """
