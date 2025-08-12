@@ -1,6 +1,6 @@
 """
 一个高度通用的文件到数据库ETL（提取、转换、加载）工具。它通过一个统一的 run() 方法，
-可以智能处理单个文件或整个目录，支持“整文件JSON”和“逐行JSON”两种模式，并提供了断点续传、
+可以智能处理单个文件或整个目录，并将文件内容作为“逐行JSON”进行处理，并提供了断点续传、
 可视化进度条和事件回调等高级功能。
 """
 import json as std_json
@@ -29,14 +29,13 @@ class Rename:
 
 class GenericFileProcessor:
     """
-    一个通用的、可定制的JSON文件处理器，用于将文件内容批量写入指定目标。
+    一个通用的、可定制的逐行JSON文件处理器，用于将文件内容批量写入指定目标。
     支持零配置启动，会自动引导用户创建配置文件。
     """
 
     def __init__(self,
                  writer: Optional[BaseWriter] = None,
                  table_name: Optional[str] = None,
-                 mode: str = 'line',
                  modifier_function: Optional[Callable[[Dict], Dict]] = None,
                  filter_function: Optional[Callable[[Dict, int], bool]] = None,
                  exclude_keys: Optional[List[str]] = None,
@@ -51,7 +50,6 @@ class GenericFileProcessor:
         Args:
             writer (BaseWriter, optional): 数据写入器实例。如果为None，将尝试从配置文件加载。
             table_name (str, optional): 目标表名。如果为None，将尝试从配置文件加载。
-            mode (str): 文件处理模式。可选值为 'line' (默认) 或 'file'。
             modifier_function (Callable, optional): 自定义修改函数。
             filter_function (Callable[[Dict, int], bool], optional): 数据过滤函数，接收数据和行号，返回False则跳过。
             exclude_keys (List[str], optional): 需要排除的源JSON键列表。
@@ -79,14 +77,11 @@ class GenericFileProcessor:
 
         if not isinstance(self.writer, BaseWriter):
             raise TypeError("writer 必须是 BaseWriter 的一个实例。")
-        if mode not in ['file', 'line']:
-            raise ValueError("mode 参数必须是 'file' 或 'line'。")
 
         self.modifier_function = modifier_function
         self.filter_function = filter_function
         self.exclude_keys = set(exclude_keys) if exclude_keys else set()
         self.default_values = default_values if default_values else {}
-        self.mode = mode
         self.batch_size = batch_size
         self.callBack = callBack
         self.print_mapping_table = print_mapping_table
@@ -426,7 +421,7 @@ class GenericFileProcessor:
             except Exception as e:
                 print(f"[WARNING] 无法生成对照表: {e}")
 
-        print(f"\n--- 开始处理路径: {target_path} (模式: {self.mode}) ---")
+        print(f"\n--- 开始处理路径: {target_path} ---")
         print(f"发现 {len(files_to_process)} 个文件待处理...")
 
         for i, file_path in enumerate(files_to_process):
@@ -434,58 +429,46 @@ class GenericFileProcessor:
             print(f"\n[{i + 1}/{len(files_to_process)}] 正在处理: {filename}")
 
             try:
-                if self.mode == 'file':
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                    if content.strip():
-                        if json_data := self._safe_json_load(content):
-                            if not self.filter_function or self.filter_function(json_data, 1):
-                                if parsed_dic := self._process_single_item(json_data):
-                                    self._execute_batch([parsed_dic], filename)
-                        else:
-                            print(f"\n[WARNING] 无法解析文件内容: {filename}")
+                if start_line > 1:
+                    print(f"  [INFO] 从第 {start_line} 行开始处理...")
+                total_lines = count_lines_in_single_file(file_path) or 0
+                json_list = []
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    for line_num, line in enumerate(f, 1):
+                        if line_num < start_line or not line.strip():
+                            continue
 
-                elif self.mode == 'line':
-                    if start_line > 1:
-                        print(f"  [INFO] 从第 {start_line} 行开始处理...")
-                    total_lines = count_lines_in_single_file(file_path) or 0
-                    json_list = []
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        for line_num, line in enumerate(f, 1):
-                            if line_num < start_line or not line.strip():
+                        try:
+                            json_data = self._safe_json_load(line)
+                            if not json_data:
+                                raise ValueError("解析失败")
+                            if self.filter_function and not self.filter_function(json_data, line_num):
                                 continue
+                            if parsed_dic := self._process_single_item(json_data):
+                                json_list.append(parsed_dic)
 
-                            try:
-                                json_data = self._safe_json_load(line)
-                                if not json_data:
-                                    raise ValueError("解析失败")
-                                if self.filter_function and not self.filter_function(json_data, line_num):
-                                    continue
-                                if parsed_dic := self._process_single_item(json_data):
-                                    json_list.append(parsed_dic)
+                            if total_lines > 0:
+                                bar = '█' * int(40 * line_num / total_lines) + '-' * (
+                                        40 - int(40 * line_num / total_lines))
+                                sys.stdout.write(
+                                    f'\r|{bar}| {line_num / total_lines:.1%} ({line_num}/{total_lines})  本批: [{len(json_list)}/{self.batch_size}]')
+                                sys.stdout.flush()
 
-                                if total_lines > 0:
-                                    bar = '█' * int(40 * line_num / total_lines) + '-' * (
-                                                40 - int(40 * line_num / total_lines))
-                                    sys.stdout.write(
-                                        f'\r|{bar}| {line_num / total_lines:.1%} ({line_num}/{total_lines})  本批: [{len(json_list)}/{self.batch_size}]')
-                                    sys.stdout.flush()
-
-                                if len(json_list) >= self.batch_size:
-                                    self._execute_batch(json_list, filename, line_num)
-                                    json_list = []
-                            except Exception as parse_e:
-                                error_msg = f"\n[WARNING] 处理文件 {filename} 第 {line_num} 行时发生错误: {parse_e}"
-                                if self.on_error == 'stop' and not isinstance(parse_e, ValueError):
-                                    raise
-                                if self.on_error == 'log_to_file':
-                                    with open('error.log', 'a', encoding='utf-8') as err_f:
-                                        err_f.write(
-                                            f"{datetime.now()} | {filename} | Line {line_num} | {parse_e}\n{line}\n")
-                                print(error_msg)
-                                print(f"  [FAILING LINE]: {line.strip()}")
-                    print()
-                    self._execute_batch(json_list, filename, line_num)
+                            if len(json_list) >= self.batch_size:
+                                self._execute_batch(json_list, filename, line_num)
+                                json_list = []
+                        except Exception as parse_e:
+                            error_msg = f"\n[WARNING] 处理文件 {filename} 第 {line_num} 行时发生错误: {parse_e}"
+                            if self.on_error == 'stop' and not isinstance(parse_e, ValueError):
+                                raise
+                            if self.on_error == 'log_to_file':
+                                with open('error.log', 'a', encoding='utf-8') as err_f:
+                                    err_f.write(
+                                        f"{datetime.now()} | {filename} | Line {line_num} | {parse_e}\n{line}\n")
+                            print(error_msg)
+                            print(f"  [FAILING LINE]: {line.strip()}")
+                print()
+                self._execute_batch(json_list, filename, line_num)
                 print(f"  [成功] 文件已处理。")
             except Exception as e:
                 print(f"\n  [失败] 处理文件 {filename} 时发生致命错误: {e}。")
@@ -551,7 +534,6 @@ if __name__ == '__main__':
     processor = GenericFileProcessor(
         writer=MockWriter(),
         table_name="users",
-        mode='line',
         modifier_function=modifier,
         filter_function=user_filter,
         default_values={"userProfile": {"city": "Unknown"}, "joinDate": datetime.now()},
