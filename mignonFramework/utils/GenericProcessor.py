@@ -10,15 +10,14 @@ import sys
 import io
 import re
 import random
-from abc import ABC, abstractmethod
 from contextlib import redirect_stdout
 from datetime import datetime
 from typing import Dict, Callable, List, Optional, Any
 
-from MignonFramework.MySQLManager import MysqlManager
-from MignonFramework.CountLinesInFolder import count_lines_in_single_file
-from MignonFramework.ConfigReader import ConfigManager
-from MignonFramework.BaseWriter import BaseWriter
+from mignonFramework.utils.MySQLManager import MysqlManager
+from mignonFramework.utils.CountLinesInFolder import count_lines_in_single_file
+from mignonFramework.utils.ConfigReader import ConfigManager
+from mignonFramework.utils.BaseWriter import BaseWriter
 
 
 class Rename:
@@ -534,7 +533,7 @@ if __name__ == '__main__':
             "userName": Rename("name"), # 只重命名
             "userAge": ("age_in_years", data.get("userAge", 0) + 1), # 重命名并修改值
             "isActive": True, # 只修改值
-            "processedBy": "MignonFramework" # 添加新字段
+            "processedBy": "mignonFramework" # 添加新字段
         }
 
     # 4. 定义一个过滤器函数 (跳过特定用户和第一行)

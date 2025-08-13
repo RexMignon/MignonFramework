@@ -249,7 +249,7 @@ class CurlToRequestsConverter:
 
         return "\n".join(lines)
 
-    def convert_and_save(self):
+    def run(self):
         """执行转换并保存到 Python 文件。"""
         try:
             py_code = self._generate_python_code()

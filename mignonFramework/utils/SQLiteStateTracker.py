@@ -8,7 +8,7 @@ import threading
 import time
 
 # 假设 BaseStateTracker 在这个路径
-from MignonFramework.BaseStateTracker import BaseStateTracker
+from mignonFramework.utils.BaseStateTracker import BaseStateTracker
 
 class SQLiteStateTracker(BaseStateTracker):
     """

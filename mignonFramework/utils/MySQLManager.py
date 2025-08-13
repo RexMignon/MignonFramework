@@ -5,7 +5,7 @@ MysqlManager: 一个健壮的 MySQL 数据库管理器。它封装了数据库�
 import pymysql
 import pymysql.cursors
 from typing import List, Dict, Any, Optional
-from MignonFramework.BaseWriter import BaseWriter
+from mignonFramework.utils.BaseWriter import BaseWriter
 
 
 class MysqlManager(BaseWriter):
