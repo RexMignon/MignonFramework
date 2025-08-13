@@ -191,7 +191,9 @@ class CurlToRequestsConverter:
         if p['params']:
             lines.append(f"params = {json.dumps(p['params'], indent=4, ensure_ascii=False)}\n")
         if p['json'] is not None:
-            json_str = json.dumps(p['json'], indent=4, ensure_ascii=False).replace('null', 'None')
+            # 修正：确保将 json 的 true/false/null 转换为 Python 的 True/False/None
+            json_str = json.dumps(p['json'], indent=4, ensure_ascii=False)
+            json_str = json_str.replace('true', 'True').replace('false', 'False').replace('null', 'None')
             lines.append(f"json_data = {json_str}\n")
         elif p['data'] is not None:
             lines.append(f"data = {repr(p['data'])}\n")
@@ -262,13 +264,13 @@ class CurlToRequestsConverter:
 
 # --- 示例用法 ---
 if __name__ == '__main__':
-    # 示例 1: POST JSON
-    print("--- 示例 1: POST JSON 请求 ---")
-    curl_post = "curl -X POST 'https://api.example.com/items' -H 'Content-Type: application/json' -d '{\"name\":\"New\"}'"
+    # 示例 1: POST JSON (包含布尔值)
+    print("--- 示例 1: POST JSON 请求 (包含布尔值) ---")
+    curl_post = "curl -X POST 'https://httpbin.org/post' -H 'Content-Type: application/json' -d '{\"name\":\"NewItem\", \"is_active\": true, \"is_deleted\": false}'"
     CurlToRequestsConverter(curl_input=curl_post, output_filename='post_request.py').convert_and_save()
     print("-" * 40)
 
-    # 示例 2: 新增 - multipart/form-data 文件上传
+    # 示例 2: multipart/form-data 文件上传
     print("--- 示例 2: Multipart/form-data 文件上传 ---")
     # 创建一个临时文件用于演示
     with open("sample.txt", "w") as f:
@@ -278,13 +280,13 @@ if __name__ == '__main__':
     os.remove("sample.txt") # 清理临时文件
     print("-" * 40)
 
-    # 示例 3: 新增 - 基本认证
+    # 示例 3: 基本认证
     print("--- 示例 3: 基本认证 ---")
     curl_auth = "curl -u 'myuser:mypassword123' 'https://httpbin.org/basic-auth/myuser/mypassword123'"
     CurlToRequestsConverter(curl_input=curl_auth, output_filename='auth_request.py').convert_and_save()
     print("-" * 40)
 
-    # 示例 4: 新增 - 使用 -G 将 -d 数据作为 URL 参数
+    # 示例 4: 使用 -G 将 -d 数据作为 URL 参数
     print("--- 示例 4: 使用 -G 和 -d ---")
     curl_get_data = "curl -G 'http://example.com/search' -d 'query=widgets&sort=price'"
     CurlToRequestsConverter(curl_input=curl_get_data, output_filename='get_with_data_request.py').convert_and_save()

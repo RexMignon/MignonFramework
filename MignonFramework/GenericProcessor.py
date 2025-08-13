@@ -9,6 +9,7 @@ import ast
 import sys
 import io
 import re
+import random
 from abc import ABC, abstractmethod
 from contextlib import redirect_stdout
 from datetime import datetime
@@ -271,6 +272,34 @@ class GenericFileProcessor:
     def _get_display_width(self, s: str) -> int:
         return sum(2 if '\u4e00' <= char <= '\u9fff' else 1 for char in s)
 
+    def _get_random_samples_from_file(self, file_path: str, sample_size: int) -> List[Dict]:
+        """
+        使用水塘抽样从文件中随机抽取指定数量的有效JSON行，以优化内存使用。
+        """
+        samples = []
+        lines_seen = 0
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+
+                    lines_seen += 1
+                    # 填充水塘
+                    if len(samples) < sample_size:
+                        if json_data := self._safe_json_load(line):
+                            samples.append(json_data)
+                    # 以递减的概率替换元素
+                    else:
+                        r = random.randint(0, lines_seen - 1)
+                        if r < sample_size:
+                            if json_data := self._safe_json_load(line):
+                                samples[r] = json_data
+        except Exception as e:
+            print(f"[WARNING] 从文件 '{os.path.basename(file_path)}' 随机抽样时出错: {e}")
+
+        return samples
+
     def _find_original_key(self, snake_key: str, sample_json: dict) -> Optional[str]:
         """根据snake_case键反查原始键。"""
         # 优先在样本数据中查找
@@ -286,24 +315,15 @@ class GenericFileProcessor:
     def _run_test_mode(self, file_path: str):
         """执行测试模式，自动诊断并建议修复方案。"""
         print("\n--- 启动测试模式 ---")
-        print(f"将使用文件 '{os.path.basename(file_path)}' 的第一批数据进行测试...")
+        print(f"将从文件 '{os.path.basename(file_path)}' 中随机抽取样本进行测试...")
 
-        raw_json_batch = []
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    if len(raw_json_batch) >= self.batch_size:
-                        break
-                    if line.strip():
-                        if json_data := self._safe_json_load(line):
-                            raw_json_batch.append(json_data)
-        except Exception as e:
-            print(f"[ERROR] 读取测试文件时失败: {e}")
-            return
+        raw_json_batch = self._get_random_samples_from_file(file_path, self.batch_size)
 
         if not raw_json_batch:
-            print("[ERROR] 未能在文件中找到有效的JSON数据进行测试。")
+            print("[ERROR] 未能在文件中找到或抽取到有效的JSON数据进行测试。")
             return
+
+        print(f"已随机抽取 {len(raw_json_batch)} 条记录进行自检。")
 
         suggested_excludes = set()
         suggested_defaults = {}
@@ -404,20 +424,17 @@ class GenericFileProcessor:
 
         if self.print_mapping_table:
             try:
+                print("[INFO] 正在从文件中随机抽样以生成字段映射表...")
+                samples = self._get_random_samples_from_file(files_to_process[0], sample_size=1000)
+
                 composite_sample = {}
-                lines_scanned = 0
-                with open(files_to_process[0], 'r', encoding='utf-8') as f:
-                    for line in f:
-                        if lines_scanned >= 1000:
-                            break
-                        if line.strip():
-                            if sample_data := self._safe_json_load(line):
-                                composite_sample.update(sample_data)
-                                lines_scanned += 1
+                for sample_data in samples:
+                    composite_sample.update(sample_data)
+
                 if composite_sample:
                     self._generate_and_print_mapping(composite_sample)
                 else:
-                    print("[WARNING] 未能在文件前1000行找到有效的JSON数据来生成对照表。")
+                    print("[WARNING] 未能从文件中随机抽样到有效的JSON数据来生成对照表。")
             except Exception as e:
                 print(f"[WARNING] 无法生成对照表: {e}")
 
