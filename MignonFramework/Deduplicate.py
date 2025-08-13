@@ -1,9 +1,3 @@
-"""
-去重方法 deduplicate_file(input_filepath: str, output_filepath: str)
-  Args:
-        input_filepath (str): 输入文件的路径。
-        output_filepath (str): 输出文件的路径（去重后的内容将写入此文件）。
-"""
 import os
 import sys
 import json
@@ -11,6 +5,7 @@ import json
 def deduplicate_file(input_filepath: str, output_filepath: str):
     """
     对大文件进行去重，移除重复行和空行，并显示处理进度。
+    相对路径将从当前工作目录解析。
 
     Args:
         input_filepath (str): 输入文件的路径。
@@ -21,19 +16,6 @@ def deduplicate_file(input_filepath: str, output_filepath: str):
     unique_lines_count = 0
 
     try:
-        # 获取当前脚本所在的目录
-        # 这确保了即使函数被导入并在其他地方调用，也能正确找到相对路径
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-
-        # 如果输入文件路径是相对路径，则将其转换为相对于脚本目录的绝对路径
-        # 注意：这里假设用户传入的 input_filepath 可能是相对路径
-        # 如果你期望用户总是传入完整绝对路径，则不需要这部分处理
-        if not os.path.isabs(input_filepath):
-            input_filepath = os.path.join(script_dir, input_filepath)
-
-        if not os.path.isabs(output_filepath):
-            output_filepath = os.path.join(script_dir, output_filepath)
-
         # 获取文件大小，用于估算进度
         total_size = os.path.getsize(input_filepath)
         processed_size = 0
@@ -41,8 +23,9 @@ def deduplicate_file(input_filepath: str, output_filepath: str):
         with open(input_filepath, 'r', encoding='utf-8') as infile, \
                 open(output_filepath, 'w', encoding='utf-8') as outfile:
 
-            print(f"开始处理文件: '{input_filepath}'")
-            print(f"去重结果将写入: '{output_filepath}'")
+            # 打印解析后的绝对路径，方便用户确认
+            print(f"开始处理文件: '{os.path.abspath(input_filepath)}'")
+            print(f"去重结果将写入: '{os.path.abspath(output_filepath)}'")
 
             for line in infile:
                 processed_lines_count += 1
@@ -50,14 +33,17 @@ def deduplicate_file(input_filepath: str, output_filepath: str):
 
                 stripped_line = line.strip()
 
+                # 跳过空行
                 if not stripped_line:
                     continue
 
+                # 如果行没见过，则添加到集合并写入文件
                 if stripped_line not in seen_lines:
                     seen_lines.add(stripped_line)
                     outfile.write(line)
                     unique_lines_count += 1
 
+                # 更新进度条
                 progress_percentage = (processed_size / total_size) * 100 if total_size > 0 else 0
                 sys.stdout.write(
                     f"\r处理进度: {processed_lines_count} 行已处理 | "
@@ -105,3 +91,4 @@ def read_and_write_lines(line_count, input_file, output_file):
         print(f"错误：找不到文件 {input_file}")
     except Exception as e:
         print(f"发生异常：{e}")
+

@@ -72,6 +72,8 @@ def count_lines_in_files(folder_path: str, prefix: str = '', suffix: str = '', p
         print("该文件夹中没有找到任何符合条件的文件。")
     else:
         print(f"\n统计完成。共处理了 {file_count} 个文件。总行数：{total_lines}")
+        return total_lines
+
 
 def count_lines_in_single_file(file_path: str):
     """
