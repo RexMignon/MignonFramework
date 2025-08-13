@@ -5,6 +5,7 @@ import functools
 import traceback
 from datetime import datetime
 import threading
+import contextlib
 
 class _Colors:
     """一个用于存储 ANSI 颜色代码的内部类。"""
@@ -13,6 +14,7 @@ class _Colors:
     YELLOW = '\033[33m'
     BLUE = '\033[34m'
     CYAN = '\033[36m'
+    MAGENTA = '\033[35m' # 为 EXIST 级别新增颜色
 
 class _AutoLoggerStream:
     """
@@ -26,16 +28,19 @@ class _AutoLoggerStream:
 
     def write(self, text: str):
         """当任何代码调用 print() 或 sys.stdout.write() 时，此方法会被自动调用。"""
+        # 检查日志记录是否被临时禁用
+        if not getattr(self._logger.patch_is_active, 'value', False):
+            self._original_stdout.write(text)
+            return
+
         try:
             with self._lock:
                 # 特殊处理 \r，以在控制台实现单行刷新效果
                 if '\r' in text and '\n' not in text:
-                    # 1. 准备日志内容和元数据
                     timestamp = self._logger.get_timestamp()
                     level = "INFO"
                     message = text.strip()
 
-                    # 2. 准备并写入带前缀的控制台消息
                     level_color = self._logger.color_map.get(level, '')
                     console_message = (
                         f"{timestamp} {_Colors.BLUE}[main]{_Colors.RESET} "
@@ -44,7 +49,6 @@ class _AutoLoggerStream:
                     self._original_stdout.write('\r' + console_message)
                     self._original_stdout.flush()
 
-                    # 3. 将纯文本日志写入文件
                     self._logger.write_log_to_file_only(level, message, timestamp)
                     return
 
@@ -56,18 +60,14 @@ class _AutoLoggerStream:
 
                 self._logger.write_log("INFO", stripped_text)
         except KeyboardInterrupt:
-            # 当用户按下 Ctrl+C 时，提供一个干净的退出，而不是显示一个混乱的堆栈跟踪。
             timestamp = self._logger.get_timestamp()
             level = "EXIST"
-
-            # 2. 准备并写入带前缀的控制台消息
             level_color = self._logger.color_map.get(level, '')
             console_message = (
-                f"{timestamp} {_Colors.BLUE}[main]{_Colors.RESET} "
-                f"{level_color}[{level}]{_Colors.RESET}"
+                f"\n{timestamp} {_Colors.BLUE}[main]{_Colors.RESET} "
+                f"{level_color}[{level}]{_Colors.RESET} User interruption detected. Exiting gracefully.\n"
             )
-            self._original_stdout.write(f"\n{console_message} interruption detected. Exiting gracefully.\n")
-            # 干净地退出程序，返回一个表示被中断的状态码
+            self._original_stdout.write(console_message)
             sys.exit(130)
 
     def flush(self):
@@ -80,7 +80,7 @@ class Logger:
     """
     MAX_LOG_LINES = 100000 # 日志文件最大行数
 
-    def __init__(self, enabld=False, log_path='./resources/log', name_template='{date}.log'):
+    def __init__(self, enabld=False, log_path='./resource/log', name_template='{date}.log'):
         self._log_path = log_path
         self._name_template = name_template
         self._lock = threading.RLock()
@@ -88,12 +88,29 @@ class Logger:
         self.color_map = {
             "INFO": _Colors.YELLOW,
             "ERROR": _Colors.RED,
-            "SYSTEM": _Colors.CYAN
+            "SYSTEM": _Colors.CYAN,
+            "EXIST": _Colors.MAGENTA # 新增 EXIST 级别颜色
         }
+
+        # 新增：一个线程安全的标志，用于控制自动日志是否激活
+        self.patch_is_active = threading.local()
+        self.patch_is_active.value = enabld
 
         if enabld:
             sys.stdout = _AutoLoggerStream(self)
             self.write_log("SYSTEM", "Auto-logging enabled. Standard output is now being logged.")
+
+    @contextlib.contextmanager
+    def disabled(self):
+        """
+        一个上下文管理器，用于临时禁用 stdout 的自动日志记录。
+        """
+        original_state = getattr(self.patch_is_active, 'value', False)
+        try:
+            self.patch_is_active.value = False
+            yield
+        finally:
+            self.patch_is_active.value = original_state
 
     def get_timestamp(self) -> str:
         """返回一个带毫秒的高精度时间戳字符串。"""
@@ -113,13 +130,11 @@ class Logger:
         base_filename = self._name_template.format(date=date_str)
         base_path = os.path.join(os.getcwd(), self._log_path, base_filename)
 
-        # 检查主日志文件
         if base_path not in self._line_counts:
             self._line_counts[base_path] = self._count_lines_in_file(base_path)
         if self._line_counts[base_path] < self.MAX_LOG_LINES:
             return base_path
 
-        # 如果主文件已满，查找分割文件
         index = 0
         while True:
             name, ext = os.path.splitext(base_filename)
@@ -154,14 +169,15 @@ class Logger:
         """将格式化的消息写入控制台和文件。"""
         timestamp = self.get_timestamp()
 
-        # 准备并打印控制台日志
         level_color = self.color_map.get(level, '')
-        console_message = f"{timestamp} {_Colors.BLUE}[main]{_Colors.RESET} {level_color}[{level}]{_Colors.RESET} {message}"
+        console_message = (
+            f"\n{timestamp} {_Colors.BLUE}[main]{_Colors.RESET} "
+            f"{level_color}[{level}]{_Colors.RESET} {message}"
+        )
         output_stream = sys.__stderr__ if level == "ERROR" else sys.__stdout__
         output_stream.write(console_message + '\n')
         output_stream.flush()
 
-        # 将日志写入文件
         self.write_log_to_file_only(level, message, timestamp)
 
     def __call__(self, func):
@@ -176,6 +192,3 @@ class Logger:
                 self.write_log("ERROR", error_msg)
                 raise
         return wrapper
-
-
-

@@ -30,7 +30,7 @@ mignonFrameworkPrint = """
  ) /  |/  |__(_(_/_/ (_(_) / (_
 (_/   '       .-/              
              (_/               
-                             v 0.1.0 mignonFramework
+                             v 0.2 mignonFramework
 
 """
 print(mignonFrameworkPrint)
