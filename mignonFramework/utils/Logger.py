@@ -186,6 +186,9 @@ class Logger:
         def wrapper(*args, **kwargs):
             try:
                 return func(*args, **kwargs)
+            except KeyboardInterrupt:
+                self.write_log("EXIST", f"User interruption in function '{func.__name__}'. Exiting gracefully.")
+                sys.exit(130)
             except Exception as e:
                 tb_string = "".join(traceback.format_exception(type(e), e, e.__traceback__))
                 error_msg = f"Exception in function '{func.__name__}'.\n  - Error: {e!r}\n  - Traceback:\n{tb_string}"
