@@ -80,7 +80,7 @@ class Logger:
     """
     MAX_LOG_LINES = 100000 # 日志文件最大行数
 
-    def __init__(self, enabld=False, log_path='./resource/log', name_template='{date}.log'):
+    def __init__(self, enabld=False, log_path='./resources/log', name_template='{date}.log'):
         self._log_path = log_path
         self._name_template = name_template
         self._lock = threading.RLock()
