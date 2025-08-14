@@ -64,6 +64,27 @@ class ConfigManager:
             self.parser.read(self.config_path, encoding='utf-8')
             return self.parser.get(self.section, field, fallback=None)
 
+    def getAllConfig(self):
+        """
+        获取配置文件中指定节的所有字段及其值。
+        此方法现在是线程安全的。
+
+        :return: 包含配置数据的字典，如果节不存在则返回 None。
+        """
+        # 在读取操作前后加锁
+        with self._lock:
+            try:
+                self.parser.read(self.config_path, encoding='utf-8')
+            except configparser.Error as e:
+                print(f"读取配置文件 '{self.config_path}' 时出错：{e}", file=sys.stderr)
+                return None
+
+            if self.parser.has_section(self.section):
+                return dict(self.parser.items(self.section))
+            else:
+                print(f"错误：在 '{self.filename}' 中未找到节 '{self.section}'。", file=sys.stderr)
+                return None
+
     def setConfig(self, field: str, value: Any) -> bool:
         with self._lock:
             self.parser.read(self.config_path, encoding='utf-8')

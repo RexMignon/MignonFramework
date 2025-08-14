@@ -480,13 +480,47 @@ QueueRandomIterator (别名: QueueIter)
 
 示例:
 ```
-import mignonFramework as mg
+import sys
+import time
+from mignonFramework import execJS, Logger, ConfigManager, inject, QueueIter, target
 
-# 创建一个从 1 到 100 的随机爬取队列
-task_queue = mg.QueueIter(range(1, 101), shuffle=True)
+log = Logger(True)
+config = ConfigManager()
 
-for page_num in task_queue:
-print(f"正在处理页面: {page_num}")
-# 可以在这里保存进度
-# current_progress = task_queue.get_current_index()
+
+def callback(que: QueueIter):
+    print(f"这里是Callback => {que.current_index}")
+
+
+que = QueueIter(range(1, 20), 1,
+                callback, config, False)
+
+
+@inject(config)
+@target(que, "name", "hello")
+@target(que, "age", 0)
+class Data:
+    helloJs: str
+    name: str
+    age: int
+
+
+if __name__ == "__main__":
+    data: Data = config.getInstance(Data)
+    datas: Data = config.getInstance(Data)
+
+
+  
+
+    while que.hasNext():
+        time.sleep(0.1)
+        sys.stdout.write(f"\r {next(que)}")
+
+    print("=========================")
+    que.pages = range(10, 30)
+    que.current_index = 11
+    while que.hasNext():
+        time.sleep(1)
+        sys.stdout.write(f"\r {next(que)}")
+    print(datas.age, data.name)
 ```

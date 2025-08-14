@@ -65,7 +65,7 @@ class _AutoLoggerStream:
             level_color = self._logger.color_map.get(level, '')
             console_message = (
                 f"\n{timestamp} {_Colors.BLUE}[main]{_Colors.RESET} "
-                f"{level_color}[{level}]{_Colors.RESET} User interruption detected. Exiting gracefully.\n"
+                f"{level_color}[{level}]{_Colors.RESET} User interruption detected. Exiting gracefully."
             )
             self._original_stdout.write(console_message)
             sys.exit(130)
@@ -98,7 +98,7 @@ class Logger:
 
         if enabld:
             sys.stdout = _AutoLoggerStream(self)
-            self.write_log("SYSTEM", "Auto-logging enabled. Standard output is now being logged.")
+            self.write_log("SYSTEM", "Auto-logging enabled. Standard output is now being logged\n")
 
     @contextlib.contextmanager
     def disabled(self):
@@ -175,7 +175,7 @@ class Logger:
             f"{level_color}[{level}]{_Colors.RESET} {message}"
         )
         output_stream = sys.__stderr__ if level == "ERROR" else sys.__stdout__
-        output_stream.write(console_message + '\n')
+        output_stream.write(console_message)
         output_stream.flush()
 
         self.write_log_to_file_only(level, message, timestamp)
