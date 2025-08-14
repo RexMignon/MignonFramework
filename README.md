@@ -55,14 +55,14 @@ config = ConfigManager(filename='app_settings.ini', section='app')
 @inject(config)
 class AppSettings:
 # 定义配置项、类型和可选的默认值
-api_endpoint: str = "https://api.default.com"
-timeout: int = 30
-retries: int
-is_active: bool = True
+   api_endpoint: str = "https://api.default.com"
+   timeout: int = 30
+   retries: int
+   is_active: bool = True
 
 # 3. 实例化类，此时框架会自动读取或创建 .ini 文件
 print("--- 正在初始化设置... ---")
-settings = AppSettings()
+settings = config,getInstance(AppSetting)
 
 # 4. 像操作普通对象一样读取和修改配置
 print(f"当前 API 地址: {settings.api_endpoint}")
@@ -93,7 +93,7 @@ is_active = True
 
 全局注入模式 (Logger(enabld=True)):
 
-自动接管: 一旦启用，会“猴子补丁”sys.stdout，自动捕获并记录所有 print 语句的输出。
+自动接管: 一旦启用，会 hook掉 sys.stdout，自动捕获并记录所有 print 语句的输出。
 
 智能进度条支持: 能正确处理 \r 回车符，在控制台实现单行动态刷新（如进度条），同时在日志文件中保留每一条刷新记录。
 
