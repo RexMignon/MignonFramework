@@ -1,0 +1,91 @@
+/* generate_button.css: “一键生成最终代码”按钮的专属样式 */
+
+/* 关键帧动画：定义一个旋转360度的动画 */
+@keyframes spinning-gradient {
+    from {
+        transform: translate(-50%, -50%) rotate(0deg);
+    }
+    to {
+        transform: translate(-50%, -50%) rotate(360deg);
+    }
+}
+
+/* 按钮容器的样式 */
+.generate-code-action-bar {
+    margin-top: 2.5rem;
+    padding-top: 2rem;
+    border-top: 2px solid #e2e8f0;
+    text-align: center; /* 居中按钮 */
+}
+
+/* 按钮本身的核心样式 */
+.generate-code-btn {
+    position: relative; /* 为伪元素提供定位上下文 */
+    overflow: hidden;   /* 隐藏旋转的伪元素溢出部分 */
+
+    font-family: var(--font-sans, 'Inter', sans-serif);
+    font-weight: 600;
+    font-size: 1.1rem;
+
+    color: #374151; /* 默认文字颜色 */
+    background-color: #f3f4f6; /* 默认背景色 (灰色) */
+
+    border: 2px solid #d1d5db; /* 默认边框 */
+    padding: 1rem 2.5rem;
+    border-radius: 0.75rem;
+
+    cursor: pointer;
+    transition: all 0.3s ease-in-out;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.04);
+}
+
+/* 按钮内部的文字容器 */
+.generate-code-btn span {
+    position: relative;
+    z-index: 2; /* 确保文字在动画伪元素之上 */
+    transition: color 0.3s ease-in-out;
+}
+
+/* 按钮的伪元素，用于实现内部动画 */
+.generate-code-btn::before {
+    content: '';
+    position: absolute;
+    z-index: 1; /* 在背景和文字之间 */
+
+    /* 尺寸扩大，确保旋转时能完全覆盖按钮 */
+    width: 200%;
+    padding-bottom: 200%;
+
+    /* 定位到中心 */
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+
+    /* 核心：使用锥形渐变创建多彩圆环 */
+    background: conic-gradient(
+            #f97316, /* 橙色 */
+            #eab308, /* 黄色 */
+            #84cc16, /* 绿色 */
+            #3b82f6, /* 蓝色 */
+            #a855f7, /* 紫色 */
+            #ec4899, /* 粉色 */
+            #f97316  /* 回到橙色，形成闭环 */
+    );
+
+    opacity: 0; /* 默认隐藏 */
+    transition: opacity 0.4s ease-in-out;
+}
+
+/* 鼠标悬停时的效果 */
+.generate-code-btn:hover {
+    border-color: transparent; /* 悬停时隐藏边框，让内部动画更突出 */
+    color: #ffffff; /* 文字变为白色，以适应彩色背景 */
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+}
+
+/* 悬停时，显示并旋转伪元素 */
+.generate-code-btn:hover::before {
+    opacity: 1;
+    animation: spinning-gradient 1.5s linear infinite;
+}

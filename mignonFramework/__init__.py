@@ -11,7 +11,7 @@ MysqlManager: 一个健壮的 MySQL 数据库管理器。
 GenericFileProcessor: 一个高度通用的文件到数据库ETL（提取、转换、加载）工具。
 ProcessFile: 提供一个可配置、可断点续传、高性能的通用文件处理引擎。(默认整文件为json) 它的任务是持续不断地监控一个目录，将文件进行解析、转换，并追加写入到大型结果文件中。
 """
-from mignonFramework.utils.Queue import QueueIter, target
+from mignonFramework.utils.Queues import QueueIter, target
 from mignonFramework.utils.Logger import Logger
 from mignonFramework.utils.CountLinesInFolder import count_lines_in_single_file as countSingleFileLines, count_lines_in_files as countFolderFileLines
 from mignonFramework.utils.Deduplicate import deduplicate_file as deduplicateFile, read_and_write_lines as readLines2otherFiles, replace_line_with_file_content as replaceLineByFile, copy_line_by_number as copyLineByNumber

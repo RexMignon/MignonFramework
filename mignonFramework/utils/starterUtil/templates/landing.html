@@ -1,0 +1,21 @@
+{% extends "layout.html" %}
+
+{% block body_class %}landing{% endblock %}
+
+{% block page_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}">
+{% endblock %}
+
+{% block content %}
+<div id="transition-overlay"></div>
+<div class="particle-container"></div>
+<div class="content">
+    <h1 class="main-title">Mignon Framework</h1>
+    <p class="subtitle">The Ultimate Toolkit</p>
+    <a href="/app" class="start-button">开始</a>
+</div>
+{% endblock %}
+
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='js/landing.js') }}" defer></script>
+{% endblock %}

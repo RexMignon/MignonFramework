@@ -1,0 +1,19 @@
+/* aurora_button.css: "一键生成最终代码" Canvas按钮的专属样式 */
+
+.generate-code-action-bar {
+    margin-top: 2.5rem;
+    padding-top: 2rem;
+    border-top: 2px solid #e2e8f0;
+    text-align: center; /* 居中按钮 */
+}
+
+#aurora-generate-btn {
+    cursor: pointer;
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    border-radius: 0.5rem; /* 匹配Canvas内的圆角绘制 */
+}
+
+#aurora-generate-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+}

@@ -1,0 +1,70 @@
+{% extends "layout.html" %}
+
+{% block body_class %}app{% endblock %}
+
+{% block page_styles %}
+{# 加载模块化CSS文件 #}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/shared.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules.css') }}">
+{# ****** 关键修改：加载新的Canvas按钮样式 ****** #}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/aurora_button.css') }}">
+{% endblock %}
+
+{% block content %}
+<div id="transition-overlay"></div>
+<div class="background-animation-container"></div>
+<h1 id="header-logo">
+    <span class="main-text">Mignon Framework</span><span class="starter-text">Starter</span>
+</h1>
+<div class="container">
+    <div class="main-grid">
+        <div id="main-content">
+            <main id="interactive-card">
+                {% include "_curl_panel.html" %}
+                <div id="dynamic-modules-container"></div>
+
+                {# <!-- ****** 关键修改：用Canvas替换旧按钮 ****** --> #}
+                <div class="generate-code-action-bar">
+                    <canvas id="aurora-generate-btn" width="250" height="60"></canvas>
+                </div>
+            </main>
+        </div>
+    </div>
+    <footer>
+        <p>Powered by <span class="gradient-text">Mignon Rex</span></p>
+    </footer>
+</div>
+
+{% include "_notification.html" %}
+
+<div id="code-modal-overlay" class="modal-overlay">
+    <div class="modal-content">
+        <button id="close-modal-btn" class="close-button">&times;</button>
+        <h3>Generated Python Code</h3>
+        <div class="code-content-wrapper">
+            <pre><code id="generated-code" class="language-python"># Click "Generate" to start</code></pre>
+            <button class="copy-button" id="copy-button" title="复制到剪贴板">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3z"/></svg>
+                <span class="copy-tooltip">已复制!</span>
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block page_scripts %}
+{# 以正确的顺序加载新的模块化JS文件 #}
+<script src="{{ url_for('static', filename='js/ui.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/state.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/module.config.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/module.execjs.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/module.queue.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/module.callback.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/module.pre_check_generator.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/module.insert_quick.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/module.main_request_generator.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/module.spider_generator.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+{# ****** 关键修改：加载新的Canvas按钮JS ****** #}
+<script src="{{ url_for('static', filename='js/aurora_button.js') }}" defer></script>
+{% endblock %}

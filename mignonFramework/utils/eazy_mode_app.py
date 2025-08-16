@@ -66,8 +66,7 @@ HTML_TEMPLATE = """
         .copy-btn { position: absolute; top: 0.5rem; right: 0.5rem; background-color: #e5e7eb; color: #4b5563; border: none; padding: 0.25rem 0.5rem; border-radius: 0.375rem; cursor: pointer; opacity: 0; transition: all 0.2s; }
         .code-container:hover .copy-btn { opacity: 1; }
         #ddl-report { padding: 1rem; border-radius: 0.5rem; border-left: 4px solid; margin-top: 1rem; }
-        @keyframes row-highlight-anim { 0% { background-color: #dcfce7; } 100% { background-color: transparent; } }
-        .row-highlight-match { animation: row-highlight-anim 2.5s ease-out; }
+        .row-highlight-match { background-color: #dcfce7; }
         .default-value-marker { position: absolute; top: 0; right: 1rem; width: 0; height: 0; border-top: 18px solid #facc15; border-left: 18px solid transparent; }
         .footer { text-align: center; margin-top: 4rem; padding: 2rem; color: var(--text-secondary); font-size: 0.875rem; }
     </style>
@@ -91,13 +90,13 @@ HTML_TEMPLATE = """
                         <div class="search-wrapper"><i class="bi bi-search"></i><input type="search" id="search-input" class="search-input" placeholder="搜索字段..."></div>
                         <button type="button" id="add-row-btn" class="btn btn-secondary" title="添加新的映射行"><i class="bi bi-plus-lg"></i></button>
                     </div>
-                    <form id="mapping-form" method="POST" action="/">
+                    <div id="mapping-wrapper">
                         <div class="table-wrapper"><table class="table">
                             <thead><tr><th>包含</th><th>源字段</th><th>目标字段</th><th>默认值</th></tr></thead>
                             <tbody id="mapping-table-body">
                                 {% for key in sample_data.keys()|sort %}
-                                <tr>
-                                    <td><input type="checkbox" name="include_{{ key }}" id="include_{{ key }}" class="form-check-input" checked></td>
+                                <tr data-row-key="{{ key }}">
+                                    <td><input type="checkbox" name="include_{{ key }}" class="form-check-input" checked></td>
                                     <td><label for="include_{{ key }}">{{ key }}</label></td>
                                     <td><input type="text" class="form-control" name="target_{{ key }}" value="{{ to_snake_case(key) }}"></td>
                                     <td style="position: relative;"><input type="text" class="form-control" name="default_{{ key }}" placeholder="-" value="{{ pre_default_values.get(key, '') }}">
@@ -107,8 +106,8 @@ HTML_TEMPLATE = """
                                 {% endfor %}
                             </tbody>
                         </table></div>
-                        <div style="padding: 1.5rem;"><button type="submit" class="btn btn-primary btn-lg w-100"><i class="bi bi-file-earmark-code"></i> 生成配置</button></div>
-                    </form>
+                        <div style="padding: 1.5rem;"><button type="submit" id="generate-btn" class="btn btn-primary btn-lg w-100"><i class="bi bi-file-earmark-code"></i> 生成配置</button></div>
+                    </div>
                 </div>
             </div>
             <div class="output-panel">
@@ -154,14 +153,81 @@ HTML_TEMPLATE = """
         // --- 实时搜索 ---
         const searchInput = document.getElementById('search-input');
         const tableBody = document.getElementById('mapping-table-body');
-        const allRows = Array.from(tableBody.getElementsByTagName('tr'));
         searchInput.addEventListener('input', (e) => {
             const searchTerm = e.target.value.toLowerCase();
+            const allRows = Array.from(tableBody.getElementsByTagName('tr'));
             allRows.forEach(row => {
                 const sourceText = row.cells[1].textContent.toLowerCase();
                 const targetText = row.querySelector('input[name^="target_"]')?.value.toLowerCase() || '';
                 row.style.display = (sourceText.includes(searchTerm) || targetText.includes(searchTerm)) ? '' : 'none';
             });
+        });
+
+        // --- 修复: 整合生成配置的逻辑到JavaScript中，通过AJAX提交，并动态更新UI ---
+        document.getElementById('generate-btn').addEventListener('click', async (e) => {
+            e.preventDefault(); // 阻止表单默认提交行为
+            const generateBtn = e.target;
+            const originalText = generateBtn.innerHTML;
+            generateBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 生成中...';
+            generateBtn.disabled = true;
+
+            const formData = {
+                mappings: []
+            };
+            const tableRows = document.querySelectorAll('#mapping-table-body tr');
+            tableRows.forEach(row => {
+                const sourceKey = row.getAttribute('data-row-key');
+                const sourceText = row.cells[1].textContent.trim();
+                const includeCheckbox = row.querySelector('input[type="checkbox"]');
+                const targetInput = row.querySelector('input[name^="target_"]');
+                const defaultInput = row.querySelector('input[name^="default_"]');
+                if (sourceKey) { // 检查是否是原始行
+                    formData.mappings.push({
+                        source_key: sourceKey,
+                        target_key: targetInput.value,
+                        default_value: defaultInput.value,
+                        included: includeCheckbox.checked
+                    });
+                } else { // 动态添加的新行
+                    const newSourceInput = row.cells[1].querySelector('input');
+                    if (newSourceInput && newSourceInput.value.trim()) {
+                        formData.mappings.push({
+                            source_key: newSourceInput.value,
+                            target_key: targetInput.value,
+                            default_value: defaultInput.value,
+                            included: includeCheckbox.checked
+                        });
+                    }
+                }
+            });
+
+            try {
+                const response = await fetch('/generate', { // 发送到一个新的路由
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
+                });
+                if (!response.ok) throw new Error((await response.json()).error || '生成配置失败');
+                
+                const data = await response.json();
+                // --- 修复 1：使用 innerHTML 替换 textContent 来正确渲染样式 ---
+                document.getElementById('code-include').innerHTML = data.include_keys;
+                document.getElementById('code-modifier').innerHTML = data.mod_func;
+                document.getElementById('code-defaults').innerHTML = data.def_vals;
+
+                generateBtn.innerHTML = '<i class="bi bi-check2-circle"></i> 生成成功!';
+                generateBtn.classList.add('btn-success');
+                setTimeout(() => {
+                    generateBtn.innerHTML = originalText;
+                    generateBtn.classList.remove('btn-success');
+                    generateBtn.disabled = false;
+                }, 2500);
+
+            } catch (error) {
+                alert(`生成配置失败: ${error.message}`);
+                generateBtn.innerHTML = originalText;
+                generateBtn.disabled = false;
+            }
         });
 
         // --- DDL解析 ---
@@ -188,15 +254,25 @@ HTML_TEMPLATE = """
                         matchedCount++;
                         ddlOnly = ddlOnly.filter(col => col !== targetInput.value);
                         row.classList.add('row-highlight-match');
-                        setTimeout(() => row.classList.remove('row-highlight-match'), 2500);
+                    } else {
+                        row.classList.remove('row-highlight-match');
                     }
                 });
                 const successClass = 'background-color: #f0fdf4; border-color: var(--success-color); color: #14532d;';
                 const warningClass = 'background-color: #fffbeb; border-color: var(--warning-color); color: #78350f;';
                 reportDiv.style.cssText = ddlOnly.length > 0 ? warningClass : successClass;
                 reportDiv.style.display = 'block';
-                reportDiv.innerHTML = `<h6><i class="bi bi-info-circle-fill"></i> DDL 报告</h6><p style="font-size: 0.9rem; margin:0;"><strong>${matchedCount}个字段已匹配。</strong>${ddlOnly.length > 0 ? `<br><strong>${ddlOnly.length}个字段在DDL中独有:</strong> ${ddlOnly.join(', ')}` : ''}</p>`;
+                
+                // --- 修复 2：将未匹配字段格式化为列表 ---
+                let unmatchedFieldsHtml = '';
+                if (ddlOnly.length > 0) {
+                    const listItems = ddlOnly.map(field => `<li><small>${field}</small></li>`).join('');
+                    unmatchedFieldsHtml = `<div style="margin-top: 0.75rem;"><strong>${ddlOnly.length}个字段在DDL中独有:</strong><ul style="margin-top: 0.25rem; padding-left: 1.25rem; margin-bottom: 0;">${listItems}</ul></div>`;
+                }
+                
+                reportDiv.innerHTML = `<h6><i class="bi bi-info-circle-fill"></i> DDL 报告</h6><p style="font-size: 0.9rem; margin:0;"><strong>${matchedCount}个字段已匹配。</strong></p>${unmatchedFieldsHtml}`;
                 reportDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
             } catch (error) {
                 reportDiv.style.cssText = 'background-color: #fee2e2; border-color: #ef4444; color: #991b1b;';
                 reportDiv.style.display = 'block';
@@ -209,8 +285,8 @@ HTML_TEMPLATE = """
         document.getElementById('add-row-btn').addEventListener('click', () => {
             const tableBody = document.getElementById('mapping-table-body');
             const newRow = tableBody.insertRow();
-            allRows.push(newRow);
             const rowId = `new_${new_row_counter++}`;
+            newRow.setAttribute('data-row-key', rowId);
             newRow.innerHTML = `<td><input type="checkbox" name="include_${rowId}" class="form-check-input" checked></td><td><input type="text" class="form-control" name="source_${rowId}" placeholder="新源字段"></td><td><input type="text" class="form-control" name="target_${rowId}" placeholder="新目标字段"></td><td><input type="text" class="form-control" name="default_${rowId}" placeholder="-"></td>`;
         });
         
@@ -258,7 +334,7 @@ class EazyAppRunner:
         return code_str
 
     def _setup_routes(self):
-        @self.app.route('/', methods=['GET', 'POST'])
+        @self.app.route('/')
         def index():
             context = {
                 "mignon_logo": self.mignon_logo,
@@ -266,48 +342,50 @@ class EazyAppRunner:
                 "to_snake_case": self.to_snake_case,
                 "pre_default_values": self.pre_default_values,
                 "generated_code": None,
-                "current_year": datetime.now().year
+                "current_year": datetime.now().year,
             }
-            if request.method == 'POST':
-                form_data = request.form
+            return render_template_string(HTML_TEMPLATE, **context)
+
+        @self.app.route('/generate', methods=['POST'])
+        def generate_code():
+            try:
+                data = request.get_json()
+                if not data or 'mappings' not in data:
+                    return jsonify({'error': 'Missing mappings data'}), 400
+
+                mappings_data = data.get('mappings', [])
                 include_keys, modifications, default_values = [], {}, {}
-                for key in self.sample_data.keys():
-                    if f'include_{key}' in form_data:
-                        target_key = form_data.get(f'target_{key}', '').strip()
-                        if not target_key: continue
+
+                for mapping in mappings_data:
+                    source_key = mapping['source_key']
+                    target_key = mapping['target_key']
+                    default_val = mapping['default_value']
+                    included = mapping['included']
+
+                    if included:
                         include_keys.append(target_key)
-                        default_val = form_data.get(f'default_{key}')
-                        if default_val: default_values[key] = default_val
-                        if target_key != self.to_snake_case(key): modifications[key] = target_key
-                i = 0
-                while True:
-                    row_id = f'new_{i}'
-                    if f'include_{row_id}' not in form_data: break
-                    source_key = form_data.get(f'source_{row_id}', '').strip()
-                    target_key = form_data.get(f'target_{row_id}', '').strip()
-                    if source_key and target_key:
-                        include_keys.append(target_key)
-                        default_val = form_data.get(f'default_{row_id}')
-                        if default_val: default_values[source_key] = default_val
-                        if target_key != self.to_snake_case(source_key): modifications[source_key] = target_key
-                    i += 1
+                        if target_key != self.to_snake_case(source_key):
+                            modifications[source_key] = target_key
+                    if default_val:
+                        default_values[source_key] = default_val
 
                 include_keys_str = f"include_keys = {json.dumps(sorted(list(set(include_keys))), indent=4)}"
                 defaults_str_list = ["# 注意: 所有值都是字符串, 你可能需要手动修改类型", "default_values = {"]
                 for k, v in sorted(default_values.items()): defaults_str_list.append(f"    '{k}': {repr(v)},")
                 defaults_str_list.append("}")
                 def_vals_str = "\n".join(defaults_str_list)
-                mod_func_lines = ["from your_module import Rename  # 确保从正确的位置导入Rename类\n", "def modifier(data: dict) -> dict:", "    return {"]
+                mod_func_lines = ["from mignonFramework import Rename  # 确保从正确的位置导入Rename类\n", "def modifier(data: dict) -> dict:", "    return {"]
                 for key, new_name in sorted(modifications.items()): mod_func_lines.append(f"        '{key}': Rename('{new_name}'),")
                 mod_func_lines.append("    }")
                 mod_func_str = "\n".join(mod_func_lines)
 
-                context["generated_code"] = {
+                return jsonify({
                     "include_keys": self._format_code(include_keys_str),
                     "mod_func": self._format_code(mod_func_str),
                     "def_vals": self._format_code(def_vals_str),
-                }
-            return render_template_string(HTML_TEMPLATE, **context)
+                })
+            except Exception as e:
+                return jsonify({'error': f'Failed to generate code: {e}'}), 500
 
         @self.app.route('/parse_ddl', methods=['POST'])
         def parse_ddl():
