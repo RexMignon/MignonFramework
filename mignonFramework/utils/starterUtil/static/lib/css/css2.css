@@ -1,0 +1,31 @@
+/*
+ * Google Fonts: Righteous, Inter, Fira Code (本地化版本)
+ * 用于 mignonFramework 主应用
+ */
+
+@font-face {
+  font-family: 'Righteous';
+  font-style: normal;
+  font-weight: 400; /* 或您实际下载的字重 */
+  font-display: swap;
+  /* 路径：static/lib/css/ -> static/lib/fonts/ */
+  src: url('../fonts/righteous.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  /* 路径：static/lib/css/ -> static/lib/fonts/ */
+  src: url('../fonts/inter.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600; /* 如果您的inter.woff2包含此字重 */
+  font-display: swap;
+  /* 路径：static/lib/css/ -> static/lib/fonts/ */
+  src: url('../fonts/inter.woff2') format('woff2');
+}

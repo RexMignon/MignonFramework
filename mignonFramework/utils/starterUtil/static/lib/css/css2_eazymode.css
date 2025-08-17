@@ -1,0 +1,40 @@
+/*
+ * Google Fonts: Inter (本地化版本)
+ * 用于 Flask Eazy Mode 应用
+ */
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  /* 路径：static/lib/css/ -> static/lib/fonts/ */
+  src: url('../fonts/inter.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  /* 路径：static/lib/css/ -> static/lib/fonts/ */
+  src: url('../fonts/inter.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  /* 路径：static/lib/css/ -> static/lib/fonts/ */
+  src: url('../fonts/inter.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  /* 路径：static/lib/css/ -> static/lib/fonts/ */
+  src: url('../fonts/inter.woff2') format('woff2');
+}

@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/shared.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/modules.css') }}">
 {# ****** 关键修改：加载新的Canvas按钮样式 ****** #}
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/css/css2.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/aurora_button.css') }}">
 {% endblock %}
 
@@ -25,17 +26,21 @@
 
                 {# <!-- ****** 关键修改：用Canvas替换旧按钮 ****** --> #}
                 <div class="generate-code-action-bar">
-                    <canvas id="aurora-generate-btn" width="250" height="60"></canvas>
+                    <div id="aurora-btn-container">
+                        <canvas id="aurora-generate-btn" width="250" height="60"></canvas>
+                        <span class="btn-text">生成代码</span>
+                    </div>
                 </div>
             </main>
         </div>
     </div>
     <footer>
-        <p>Powered by <span class="gradient-text">Mignon Rex</span></p>
+        <p>mignon Framework<span class="gradient-text"> Starter</span></p>
     </footer>
 </div>
 
-{% include "_notification.html" %}
+{# ****** 关键修改：移除旧的通知包含，并添加新的通知堆栈容器 ****** #}
+<div id="notification-stack"></div>
 
 <div id="code-modal-overlay" class="modal-overlay">
     <div class="modal-content">

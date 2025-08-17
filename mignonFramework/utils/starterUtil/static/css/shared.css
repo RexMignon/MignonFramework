@@ -14,6 +14,12 @@
     --color-glow-1: #3b82f6; /* Primary blue */
     --color-glow-2: #6366f1; /* Primary indigo */
     --color-glow-3: #ec4899; /* Primary pink */
+
+    /* 通知模块新增颜色变量 */
+    --notification-success-bg: linear-gradient(to right, #10b981, #34d399); /* 成功渐变 */
+    --notification-error-bg: linear-gradient(to right, #ef4444, #f87171);   /* 错误渐变 */
+    --notification-shadow: 0 15px 30px -8px rgba(0,0,0,0.3); /* 更深的阴影 */
+    --notification-text-color: #ffffff; /* 通知文本颜色 */
 }
 
 /* --- Keyframes --- */
@@ -21,19 +27,12 @@
 @keyframes fadeIn-logo-part { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* 新增：背景粒子动画关键帧 */
-@keyframes particle-float {
-    0% { transform: translateY(0); opacity: 1; }
-    100% { transform: translateY(-150vh); opacity: 0; }
-}
-
 /* 新增：按钮光晕动画关键帧 */
 @keyframes button-glow {
     0% { box-shadow: 0 0 8px var(--color-glow-1), 0 0 12px var(--color-glow-2); }
     50% { box-shadow: 0 0 12px var(--color-glow-2), 0 0 18px var(--color-glow-3); }
     100% { box-shadow: 0 0 8px var(--color-glow-1), 0 0 12px var(--color-glow-2); }
 }
-
 
 /* --- 全局与布局 --- */
 body.app {
@@ -92,7 +91,6 @@ body.app {
     opacity: 0.3;
     animation: fadeIn-main 2s ease-out forwards;
 }
-/* 简单的 JavaScript 粒子效果，可以在 app.js 中添加 */
 
 
 #header-logo {
@@ -231,8 +229,105 @@ footer {
 .copy-button .copy-tooltip { position: absolute; bottom: 120%; right: 50%; transform: translateX(50%); background: #333; color: white; padding: 0.3rem 0.6rem; border-radius: 0.25rem; font-size: 0.8rem; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
 .copy-button.copied .copy-tooltip { opacity: 1; }
 
-/* --- Notification --- */
-.notification { position: fixed; top: 2rem; left: 50%; transform: translate(-50%, -200%); background-image: linear-gradient(to right, #2563eb, #3b82f6); color: #ffffff; padding: 1rem 1.5rem; border-radius: 0.75rem; box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.4); display: flex; align-items: center; opacity: 0; transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.5s ease-out; z-index: 1000; font-family: var(--font-sans); font-weight: 600; }
-.notification.error { background-image: linear-gradient(to right, #ef4444, #f87171); box-shadow: 0 10px 25px -5px rgba(239, 68, 68, 0.4); }
-.notification.show { opacity: 1; transform: translate(-50%, 0); }
-.notification-icon { margin-right: 0.75rem; font-size: 1.2rem; }
+/* --- Notification Stack Container --- */
+/* 这个容器将固定在屏幕右上角，并堆叠通知 */
+#notification-stack {
+    position: fixed;
+    top: 1.5rem; /* 距离顶部 */
+    right: 1.5rem; /* 距离右侧 */
+    display: flex;
+    flex-direction: column; /* 垂直堆叠 */
+    gap: 0.75rem; /* 通知之间的间距 */
+    z-index: 1000;
+    pointer-events: none; /* 允许点击穿透堆栈容器 */
+    align-items: flex-end; /* 通知右对齐 */
+    max-width: 90%; /* 确保在小屏幕上不会溢出 */
+}
+
+/* --- Individual Notification Styles --- */
+.notification {
+    position: relative; /* 相对于其父容器定位 */
+    min-width: 280px; /* 最小宽度 */
+    max-width: 350px; /* 最大宽度，防止过宽 */
+    padding: 1rem 1.5rem;
+    border-radius: 0.75rem;
+    box-shadow: var(--notification-shadow);
+    border: 2px solid rgba(255,255,255,0.3);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 1rem;
+    text-align: center;
+    pointer-events: auto; /* 允许与单个通知交互 */
+    overflow: hidden; /* 隐藏任何溢出内容 */
+
+    /* 初始状态：透明且向上平移，为进入动画做准备 */
+    opacity: 0;
+    transform: translateY(20px); /* 从下方滑入 */
+    /* 动画过渡：渐显和滑动 */
+    transition: opacity 0.25s ease-out, transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.notification.success {
+    background-image: var(--notification-success-bg);
+    color: var(--notification-text-color);
+}
+
+.notification.error {
+    background-image: var(--notification-error-bg);
+    color: var(--notification-text-color);
+}
+
+/* 通知显示时的动画 */
+.notification.show {
+    opacity: 1;
+    transform: translateY(0); /* 滑入视图 */
+}
+
+/* 通知隐藏时的动画 */
+.notification.hide {
+    opacity: 0;
+    transform: translateY(20px); /* 滑出视图 */
+}
+
+/* 新增：通知收缩动画 */
+@keyframes notification-collapse {
+    from {
+        max-height: var(--notification-initial-height); /* 初始高度由JS设置 */
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+        margin-bottom: 0.75rem; /* 匹配堆栈的gap */
+        border-width: 2px;
+    }
+    to {
+        max-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        margin-bottom: 0;
+        border-width: 0;
+        opacity: 0; /* 确保完全消失 */
+    }
+}
+
+.notification.collapsing {
+    animation: notification-collapse 0.3s ease-out forwards; /* 动画持续0.3秒 */
+    overflow: hidden; /* 隐藏收缩时溢出的内容 */
+    /* 移除其他可能干扰收缩动画的过渡 */
+    transition: none;
+}
+
+
+/* 通知文本样式 */
+.notification-text { /* 注意：这里我将 id 更改为 class，因为会有多个通知 */
+    flex-grow: 1; /* 允许文本占据可用空间 */
+    text-align: center;
+    white-space: nowrap; /* 防止文本换行 */
+    overflow: hidden; /* 隐藏溢出文本 */
+    text-overflow: ellipsis; /* 显示省略号 */
+}
+
+/* 移除关闭按钮样式 (如果需要，可以重新添加) */
+.notification .close-btn {
+    display: none;
+}

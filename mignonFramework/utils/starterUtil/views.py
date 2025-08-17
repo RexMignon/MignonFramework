@@ -1,5 +1,5 @@
 # mignonFramework/utils/starterUtil/views.py
-from flask import Blueprint, render_template, request, jsonify, make_response
+from flask import Blueprint, render_template, request, jsonify, make_response, send_from_directory
 from mignonFramework.utils.Curl2Reuqest import CurlToRequestsConverter
 from .code_generator import generate_scraper_code_and_configs
 import json
@@ -9,7 +9,7 @@ import os
 import traceback
 
 bp = Blueprint('starter', __name__)
-
+current_dir = os.path.dirname(os.path.abspath(__file__))
 @bp.route('/')
 def landing():
     return render_template('landing.html')
@@ -17,6 +17,13 @@ def landing():
 @bp.route('/app')
 def app():
     return render_template('app.html')
+
+
+@bp.route('/favicon.ico')
+def favicon():
+    static_folder = os.path.join(current_dir, 'static', "ico")
+    return send_from_directory(static_folder, 'favicon.ico')
+
 
 @bp.route('/convert_and_run', methods=['POST'])
 def convert_and_run():

@@ -11,6 +11,12 @@
 @keyframes particle-float { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(-150vh); opacity: 0; } }
 @keyframes aurora-border { 0% { border-color: var(--color-glow-1); box-shadow: 0 0 15px var(--color-glow-1); } 33% { border-color: var(--color-glow-2); box-shadow: 0 0 15px var(--color-glow-2); } 66% { border-color: var(--color-glow-3); box-shadow: 0 0 15px var(--color-glow-3); } 100% { border-color: var(--color-glow-1); box-shadow: 0 0 15px var(--color-glow-1); } }
 
+/* Removed text-aurora-flow keyframes as text will no longer have flowing background */
+/* @keyframes text-aurora-flow {
+    0% { background-position: 0% center; }
+    100% { background-position: -200% center; }
+} */
+
 body.landing {
     background-color: #020617;
     font-family: var(--font-sans);
@@ -55,5 +61,67 @@ body.landing {
 
 .landing .main-title { font-family: var(--font-fancy); font-size: 6rem; letter-spacing: 4px; animation: pulse-glow 4s ease-in-out infinite; margin: 0; }
 .landing .subtitle { font-family: var(--font-mono); color: rgba(255, 255, 255, 0.6); margin-top: 0.5rem; margin-bottom: 4rem; letter-spacing: 2px; }
-.landing .start-button { display: inline-block; font-family: var(--font-fancy); font-size: 1.8rem; letter-spacing: 2px; color: rgba(224, 242, 254, 0.6); text-decoration: none; padding: 0.8rem 2.5rem; border: 2px solid transparent; border-radius: 0.5rem; transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1); cursor: pointer; }
-.landing .start-button:hover { color: #f0fdfa; transform: scale(1.1); animation: aurora-border 1.5s ease-in-out infinite; }
+
+/* --- Styles for the Aurora Start Button Container --- */
+#aurora-start-btn-container {
+    position: relative;
+    display: inline-block;
+    width: 250px;
+    height: 60px;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1), box-shadow 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+    border: 2px solid transparent;
+    animation: none;
+}
+
+#aurora-start-btn-container:hover {
+    transform: scale(1.1);
+    animation: aurora-border 1.5s ease-in-out infinite;
+}
+
+/* --- Styles for the Canvas inside the Start Button Container --- */
+#aurora-start-btn {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
+    border-radius: 0.5rem;
+}
+
+/* --- Styles for the Text inside the Start Button Container --- */
+#aurora-start-btn-container .btn-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+
+    font-family: var(--font-fancy);
+    font-size: 1.8rem;
+    letter-spacing: 2px;
+
+    /* Default text color: white */
+    color: #ffffff;
+    /* Removed background-image and background-clip for default state as text will be solid white */
+    /* -webkit-background-clip: text; */
+    /* background-clip: text; */
+    /* -webkit-text-fill-color: transparent; */
+
+    transition: color 0.2s ease-in-out; /* Only transition color */
+    pointer-events: none; /* Allow mouse events to pass through text */
+
+    /* Removed background-size and background-position as text will be solid white */
+    /* background-size: 200% auto; */
+    /* background-position: 0% center; */
+}
+
+#aurora-start-btn-container:hover .btn-text {
+    /* Hover text color: black */
+    color: #000000;
+    /* Removed aurora gradient and animation on hover */
+    background-image: none; /* Remove background image */
+    animation: none; /* Remove flowing animation */
+    -webkit-text-fill-color: initial; /* Reset text fill color to make color property effective */
+}

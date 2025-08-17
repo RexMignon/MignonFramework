@@ -11,13 +11,13 @@ window.insertQuickModule = {
             <div class="panel-header">
                 <div style="display: flex; align-items: baseline;">
                     <h3 class="panel-title" style="font-size: 1.2rem;">InsertQuick 功能</h3>
-                    <span class="panel-description">配置是否包含 InsertQuick 函数</span>
+                    <span class="panel-description">配置是否包含 InsertQuick </span>
                 </div>
             </div>
 
             <div class="item-list">
                 <div class="item-row spider-feature-row">
-                    <span>是否需要 InsertQuick 功能</span>
+                    <span>InsertQuick</span>
                     <select id="include-insert-quick" class="form-control">
                         <option value="yes">是</option>
                         <option value="no" selected>否</option>

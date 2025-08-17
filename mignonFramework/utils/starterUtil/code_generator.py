@@ -2,18 +2,18 @@
 import json
 import os
 
+
 class CodeGenerator:
     """
     根据前端传递的完整应用状态，生成最终的Python爬虫脚本和相关的配置文件。
     """
+
     def __init__(self, state):
         self.state = state
         # 主爬虫脚本的组件
-        self.imports = set([
-            "import requests", "import json", "import time", "import datetime",
-            "import sys", "import random",
-            "from mignonFramework import ConfigManager, Logger, inject, QueueIter, target, Rename, InsertQuick, execJS"
-        ])
+        self.imports = {"import requests", "import json", "import time", "import datetime", "import sys",
+                        "import random",
+                        "from mignonFramework import ConfigManager, Logger, inject, QueueIter, target, Rename, InsertQuick, execJS"}
         self.code_parts = []
         self.callback_functions = []
 
@@ -63,11 +63,11 @@ class CodeGenerator:
 
         return self.output_files
 
-
     def _generate_config_managers_and_inis(self):
         """生成ConfigManager实例和.ini文件，并将其存入 self.output_files"""
         configs = self.state.get('configs', {})
-        if not configs: return
+        if not configs:
+            return
         for class_name, config_data in configs.items():
             manager_name = config_data.get('managerName')
             ini_path_name = config_data.get('managerIniPath', '').strip()
@@ -92,7 +92,8 @@ class CodeGenerator:
     def _generate_execjs(self):
         """生成ExecJS相关代码和JS文件，并将其存入 self.output_files"""
         execjs_configs = self.state.get('execjs', [])
-        if not execjs_configs: return
+        if not execjs_configs:
+            return
         for config in execjs_configs:
             method_name = config.get('methodName')
             params = config.get('params', [])
@@ -112,8 +113,10 @@ class CodeGenerator:
                             break
                 is_valid_path = (js_path_from_config.startswith('./resources/js/') and
                                  (js_path_from_config.endswith('.js') or js_path_from_config.endswith('.jsx')))
-                if is_valid_path: js_filename = os.path.basename(js_path_from_config)
-                else: js_filename = f"{method_name}.js"
+                if is_valid_path:
+                    js_filename = os.path.basename(js_path_from_config)
+                else:
+                    js_filename = f"{method_name}.js"
             elif config.get('staticPath'):
                 static_path = config.get('staticPath')
                 decorator_arg = f"'./resources/js/{static_path}'"
@@ -155,7 +158,8 @@ path = PATH_TO_YOUR_FILE_OR_DIRECTORY
 
         queue_to_manager_map = {}
         for instance_name, queue_data in queues.items():
-            if instance_name == 'UnnamedQueue': continue
+            if instance_name == 'UnnamedQueue':
+                continue
             for t in queue_data.get('targets', []):
                 if t.get('enabled'):
                     config_class = t.get('configClassName')
@@ -167,8 +171,7 @@ path = PATH_TO_YOUR_FILE_OR_DIRECTORY
         for instance_name in queues.keys():
             if instance_name != 'UnnamedQueue':
                 manager_arg = queue_to_manager_map.get(instance_name, '')
-                self.code_parts.append(f"{instance_name} = QueueIter(config_manager={manager_arg})")
-
+                self.code_parts.append(f"{instance_name} = QueueIter({manager_arg})")
 
     def _generate_targets_and_injected_classes(self):
         """生成@target和@inject的类"""
@@ -177,7 +180,8 @@ path = PATH_TO_YOUR_FILE_OR_DIRECTORY
 
         target_map = {}
         for instance_name, queue_data in queues.items():
-            if instance_name == 'UnnamedQueue': continue
+            if instance_name == 'UnnamedQueue':
+                continue
             for t in queue_data.get('targets', []):
                 if t.get('enabled'):
                     config_class = t.get('configClassName')
@@ -190,7 +194,8 @@ path = PATH_TO_YOUR_FILE_OR_DIRECTORY
                     })
 
         for class_name, config_data in configs.items():
-            if class_name == 'UnnamedConfig': continue
+            if class_name == 'UnnamedConfig':
+                continue
             code_block = ""
             if class_name in target_map:
                 for target_info in target_map[class_name]:
@@ -233,7 +238,8 @@ path = PATH_TO_YOUR_FILE_OR_DIRECTORY
         for queue_iter_name, callback_list in callbacks.items():
             for callback_data in callback_list:
                 method_name = callback_data.get('methodName')
-                if not method_name: continue
+                if not method_name:
+                    continue
 
                 if method_name not in all_callback_defs:
                     code = f"def {method_name}(que: QueueIter):\n"
@@ -290,25 +296,41 @@ path = PATH_TO_YOUR_FILE_OR_DIRECTORY
         self.code_parts.append(f'urls = "{url}"')
 
         def build_dict_code(dict_name, field_type_key, original_data_key):
-            mapped_fields = self.state.get('extractedFields', {}).get(field_type_key, [])
-            original_data = curl_details.get(original_data_key, {})
-            all_fields_in_ui = {f['fieldName'] for f in mapped_fields if not f.get('isDeleted')}
-            if not all_fields_in_ui and not original_data: return None
+            # 修正：首先从状态中过滤掉所有被标记为删除的字段
+            mapped_fields_with_deleted = self.state.get('extractedFields', {}).get(field_type_key, [])
+            mapped_fields = [f for f in mapped_fields_with_deleted if not f.get('isDeleted')]
 
-            mapping_lookup = {f['fieldName']: f for f in mapped_fields if not f.get('isDeleted')}
+            original_data = curl_details.get(original_data_key, {})
+            all_fields_in_ui = {f['fieldName'] for f in mapped_fields}
+            if not all_fields_in_ui and not original_data:
+                return None
+
+            mapping_lookup = {f['fieldName']: f for f in mapped_fields}
             lines, all_keys = [], all_fields_in_ui.union(original_data.keys())
+
+            # 修正：在迭代之前对键进行排序，以确保一致性
             for field_name in sorted(list(all_keys)):
-                if field_name in mapping_lookup and mapping_lookup[field_name].get('isDeleted'): continue
-                mapping = mapping_lookup.get(field_name)
-                value_str = ""
-                if mapping and mapping.get('configClassName') and mapping.get('configFieldName'):
-                    config_class, config_field = mapping.get('configClassName'), mapping.get('configFieldName')
-                    value_str = f"{config_class.lower()}.{config_field}"
-                else:
-                    original_value = original_data.get(field_name)
-                    value_str = "''" if original_value is None else repr(original_value)
-                lines.append(f'    "{field_name}": {value_str},')
-            if not lines: return None
+                # 如果字段名在非删除映射中，则使用其配置
+                if field_name in mapping_lookup:
+                    mapping = mapping_lookup.get(field_name)
+                    value_str = ""
+                    if mapping and mapping.get('configClassName') and mapping.get('configFieldName'):
+                        config_class, config_field = mapping.get('configClassName'), mapping.get('configFieldName')
+                        value_str = f"{config_class.lower()}.{config_field}"
+                    else:
+                        original_value = original_data.get(field_name)
+                        value_str = "''" if original_value is None else repr(original_value)
+                    lines.append(f'    "{field_name}": {value_str},')
+                # 如果字段只存在于原始数据中，但未在UI中被删除，则也应包含它
+                elif field_name in original_data:
+                    # 确保这个字段没有被UI中的同名删除字段覆盖
+                    if field_name not in {f['fieldName'] for f in mapped_fields_with_deleted if f.get('isDeleted')}:
+                        original_value = original_data.get(field_name)
+                        value_str = "''" if original_value is None else repr(original_value)
+                        lines.append(f'    "{field_name}": {value_str},')
+
+            if not lines:
+                return None
             return f"{dict_name} = {{\n" + "\n".join(lines) + "\n}"
 
         for name, f_type, o_key in [('headers', 'headers', 'extracted_headers'),
@@ -316,7 +338,8 @@ path = PATH_TO_YOUR_FILE_OR_DIRECTORY
                                     ('params', 'params', 'extracted_params'),
                                     ('json_data', 'jsonData', 'extracted_json_data')]:
             code = build_dict_code(name, f_type, o_key)
-            if code: self.code_parts.append(code)
+            if code:
+                self.code_parts.append(code)
 
     def _generate_pre_check_request(self):
         """
@@ -380,7 +403,8 @@ def preCheckRequest():
                 request_params.append(f'{param_name}={var_name}_copy')
 
         # Add 'data' if it's used in any callback
-        if any('data' in cb.get('assignValue', '') for cb_list in self.state.get('callbacks', {}).values() for cb in cb_list):
+        if any('data' in cb.get('assignValue', '') for cb_list in self.state.get('callbacks', {}).values() for cb in
+               cb_list):
             global_vars.add('data')
 
         globals_line = f"    global {', '.join(sorted(list(global_vars)))}"

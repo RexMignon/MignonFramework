@@ -11,13 +11,13 @@ window.preCheckGeneratorModule = {
             <div class="panel-header">
                 <div style="display: flex; align-items: baseline;">
                     <h3 class="panel-title" style="font-size: 1.2rem;">预检请求 (Pre-Check Request)</h3>
-                    <span class="panel-description">配置是否包含预检请求函数 (preCheckRequest) 用于获取总数</span>
+                    <span class="panel-description">配置是否包含预检请求函数 (preCheckRequest) 用于获取总数(用于分页爬取的场景)</span>
                 </div>
             </div>
 
             <div class="item-list">
                 <div class="item-row spider-feature-row">
-                    <span>是否需要预检请求</span>
+                    <span>预检请求</span>
                     <select id="include-pre-check-request" class="form-control">
                         <option value="yes">是</option>
                         <option value="no" selected>否</option>

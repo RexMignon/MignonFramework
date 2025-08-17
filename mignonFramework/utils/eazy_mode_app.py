@@ -1,12 +1,18 @@
-# eazy_mode_app.py
 import json
 import re
 from datetime import datetime
-from flask import Flask, render_template_string, request, jsonify
+from flask import Flask, render_template_string, request, jsonify, url_for, render_template, send_from_directory
+import os
 
 # 虚拟的DDL解析器作为备用
 from mignonFramework.utils.SqlDDL2List import extract_column_names_from_ddl
 
+# 获取当前脚本的绝对路径
+current_dir = os.path.dirname(os.path.abspath(__file__))
+
+
+app = Flask(__name__,
+            static_folder=os.path.join(current_dir, 'starterUtil', 'static'))
 
 # --- 关键修复：将完整的HTML和CSS放在这里 ---
 HTML_TEMPLATE = """
@@ -16,10 +22,9 @@ HTML_TEMPLATE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>mignonFramework - Eazy Mode</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link href="{{ url_for('static', filename='lib/css/css2_eazymode.css') }}" rel="stylesheet">
+    {# ****** 修改：引用本地的 Bootstrap Icons CSS ****** #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='lib/bootstrap-icons/bootstrap-icons.min.css') }}">
     <style>
         :root {
             --bg-color: #f7f8fa; --card-bg-color: #ffffff; --text-color: #111827; --text-secondary: #6b7280;
@@ -307,9 +312,10 @@ HTML_TEMPLATE = """
 </html>
 """
 
+
 class EazyAppRunner:
     def __init__(self, sample_data, to_snake_case_func, pre_default_values):
-        self.app = Flask(__name__)
+        self.app = app
         self.sample_data = sample_data
         self.to_snake_case = to_snake_case_func
         self.pre_default_values = pre_default_values or {}
@@ -320,7 +326,7 @@ class EazyAppRunner:
  ) /  |/  |__(_(_/_/ (_(_) / (_
 (_/   '       .-/              
              (_/               
-                             v 0.3 mignonFramework
+                             v 0.5 mignonFramework
 
 """
         self._setup_routes()
@@ -328,7 +334,8 @@ class EazyAppRunner:
     def _format_code(self, code_str):
         code_str = code_str.replace('<', '&lt;').replace('>', '&gt;')
         code_str = re.sub(r'(#.*)', r'<span style="color:#6b7280;">\1</span>', code_str)
-        code_str = re.sub(r'(\bdef\b|\bfrom\b|\bimport\b|\breturn\b)', r'<span style="color:#be185d; font-weight:500;">\1</span>', code_str)
+        code_str = re.sub(r'(\bdef\b|\bfrom\b|\bimport\b|\breturn\b)',
+                          r'<span style="color:#be185d; font-weight:500;">\1</span>', code_str)
         code_str = re.sub(r"(\bRename\b)", r'<span style="color:#2563eb; font-weight:500;">\1</span>', code_str)
         code_str = re.sub(r"('.*?')", r'<span style="color:#059669;">\1</span>', code_str)
         return code_str
@@ -345,6 +352,11 @@ class EazyAppRunner:
                 "current_year": datetime.now().year,
             }
             return render_template_string(HTML_TEMPLATE, **context)
+
+        @self.app.route('/favicon.ico')
+        def favicon():
+            static_folder = os.path.join(current_dir, 'starterUtil', "static/ico")
+            return send_from_directory(static_folder, 'favicon.ico')
 
         @self.app.route('/generate', methods=['POST'])
         def generate_code():
@@ -371,11 +383,14 @@ class EazyAppRunner:
 
                 include_keys_str = f"include_keys = {json.dumps(sorted(list(set(include_keys))), indent=4)}"
                 defaults_str_list = ["# 注意: 所有值都是字符串, 你可能需要手动修改类型", "default_values = {"]
-                for k, v in sorted(default_values.items()): defaults_str_list.append(f"    '{k}': {repr(v)},")
+                for k, v in sorted(default_values.items()):
+                    defaults_str_list.append(f"    '{k}': {repr(v)},")
                 defaults_str_list.append("}")
                 def_vals_str = "\n".join(defaults_str_list)
-                mod_func_lines = ["from mignonFramework import Rename  # 确保从正确的位置导入Rename类\n", "def modifier(data: dict) -> dict:", "    return {"]
-                for key, new_name in sorted(modifications.items()): mod_func_lines.append(f"        '{key}': Rename('{new_name}'),")
+                mod_func_lines = ["from mignonFramework import Rename  # 确保从正确的位置导入Rename类\n",
+                                  "def modifier(data: dict) -> dict:", "    return {"]
+                for key, new_name in sorted(modifications.items()):
+                    mod_func_lines.append(f"        '{key}': Rename('{new_name}'),")
                 mod_func_lines.append("    }")
                 mod_func_str = "\n".join(mod_func_lines)
 

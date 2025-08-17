@@ -4,19 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MignonFramework Starter</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Righteous&family=Inter:wght@400;600&family=Fira+Code:wght@500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-coy.min.css">
+    {# 移除远程 Google 字体和 PrismJS CSS #}
 
-    {% block page_styles %}{% endblock %}
+    {% block page_styles %}
+    {# ****** 修改：引用本地的字体CSS文件 ****** #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='lib/css/css2.css') }}">
+    {# ****** 修改：引用本地的 PrismJS CSS 文件 ****** #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='lib/prism/prism-coy.min.css') }}">
+    {% endblock %}
 
 </head>
 <body class="{% block body_class %}{% endblock %}">
 {% block content %}{% endblock %}
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js" defer></script>
+{# ****** 修改：引用本地的 PrismJS JS 文件 ****** #}
+<script src="{{ url_for('static', filename='lib/prism/prism.min.js') }}" defer></script>
+<script src="{{ url_for('static', filename='lib/prism/prism-python.min.js') }}" defer></script>
 
 {% block page_scripts %}{% endblock %}
 </body>

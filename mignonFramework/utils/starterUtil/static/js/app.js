@@ -5,69 +5,135 @@ window.generateFinalCode = async function() {
     ui.showNotification('正在校验所有模块的配置...', 'success');
     const appState = window.getAppState();
 
-    // ... (Config 和 ExecJS 的校验逻辑保持不变) ...
+    let hasValidationError = false; // 全局错误标志
+
+    // Config 模块校验
+    if (window.configModule && window.configModule.validate) {
+        // configModule.validate() 会返回 true 如果有错误
+        if (window.configModule.validate()) {
+            hasValidationError = true;
+            ui.showNotification('错误: Config 模块存在未填写的必填项或重复项！', 'error');
+        }
+    }
+
+    // ExecJS 模块校验
+    if (window.execjsModule && window.execjsModule.validate) {
+        if (window.execjsModule.validate()) {
+            hasValidationError = true;
+            ui.showNotification('错误: ExecJS 模块存在未填写的必填项或重复项！', 'error');
+        }
+    }
+
+    // QueueIter 模块校验
+    if (window.queueModule && window.queueModule.validate) {
+        if (window.queueModule.validate()) {
+            hasValidationError = true;
+            ui.showNotification('错误: QueueIter 模块存在未填写的必填项或重复项！', 'error');
+        }
+    }
+
+    // Callback 模块校验
+    if (window.callbackModule && window.callbackModule.validate) {
+        if (window.callbackModule.validate()) {
+            hasValidationError = true;
+            ui.showNotification('错误: Callback 模块存在未填写的必填项或重复项！', 'error');
+        }
+    }
+
+    // Main Request 模块校验
+    if (window.mainRequestGeneratorModule && window.mainRequestGeneratorModule.validate) {
+        if (window.mainRequestGeneratorModule.validate()) {
+            hasValidationError = true;
+            ui.showNotification('错误: Main Request 模块存在重复的 QueueIter 映射！', 'error');
+        }
+    }
+
+    // Spider Generator 模块校验 (如果需要，目前没有独立的 validate 方法，但可以添加)
+    // if (window.spiderGeneratorModule && window.spiderGeneratorModule.validate) {
+    //     if (window.spiderGeneratorModule.validate()) {
+    //         hasValidationError = true;
+    //         ui.showNotification('错误: 请求字段映射模块存在未填写的必填项或重复项！', 'error');
+    //     }
+    // }
+
+    // 如果存在任何校验错误，则停止生成代码
+    if (hasValidationError) {
+        console.error('Validation failed. Stopping code generation.');
+        return; // 停止函数执行
+    }
+
+
+    // --- 原始的校验逻辑 (保留，如果模块内部没有 validate 方法，或者需要额外的全局校验) ---
+    // Config 模块的额外校验（如果模块的validate方法不够详细）
     if (appState.configs && Object.keys(appState.configs).length > 0) {
         for (const className in appState.configs) {
             const configData = appState.configs[className];
             if (!configData.managerName) {
                 ui.showNotification(`错误: Config 类 "${className}" 缺少 "Manager Name"！`, 'error');
-                return;
+                hasValidationError = true;
             }
             if (!className || className === 'UnnamedConfig') {
                 ui.showNotification(`错误: 存在未命名的 "Class Name"！`, 'error');
-                return;
+                hasValidationError = true;
             }
             if (!configData.fields || configData.fields.length === 0) {
                 ui.showNotification(`错误: Config 类 "${className}" 至少需要一个字段！`, 'error');
-                return;
+                hasValidationError = true;
             }
             for (const field of configData.fields) {
                 if (!field.name) {
                     ui.showNotification(`错误: Config 类 "${className}" 中存在未命名的字段！`, 'error');
-                    return;
+                    hasValidationError = true;
                 }
             }
         }
     }
+    // ExecJS 模块的额外校验
     if (appState.execjs && appState.execjs.length > 0) {
         for (const [index, execjsData] of appState.execjs.entries()) {
             if (!execjsData.methodName) {
                 ui.showNotification(`错误: ExecJS配置第 ${index + 1} 行缺少 "JS 方法名"！`, 'error');
-                return;
+                hasValidationError = true;
             }
             if (execjsData.configClassName) {
                 if (!execjsData.pathFromConfigField) {
                     ui.showNotification(`错误: ExecJS方法 "${execjsData.methodName}" 已关联Config类，但未选择字段作为JS文件路径！`, 'error');
-                    return;
+                    hasValidationError = true;
                 }
             } else {
                 if (!execjsData.staticPath) {
                     ui.showNotification(`错误: ExecJS方法 "${execjsData.methodName}" 缺少 "JS 文件路径"！`, 'error');
-                    return;
+                    hasValidationError = true;
                 }
             }
         }
     }
-
-    // ****** 新增: QueueIter 模块校验 ******
+    // QueueIter 模块的额外校验
     if (appState.queueIters && Object.keys(appState.queueIters).length > 0) {
         for (const instanceName in appState.queueIters) {
             if (instanceName === 'UnnamedQueue') {
                 ui.showNotification('错误: 存在未命名的 "QueueIter 实例名"！', 'error');
-                return;
+                hasValidationError = true;
             }
             const queueData = appState.queueIters[instanceName];
             if (queueData.targets && queueData.targets.length > 0) {
                 for (const [index, target] of queueData.targets.entries()) {
-                    // --- FIXED: Validation now checks for targetName, which corresponds to the selected field ---
                     if (!target.targetName) {
                         ui.showNotification(`错误: 队列实例 "${instanceName}" 的第 ${index + 1} 个 @target 任务未选择要更新的"字段"！`, 'error');
-                        return;
+                        hasValidationError = true;
                     }
                 }
             }
         }
     }
+
+    // 如果在额外的校验中也发现了错误，则停止生成代码
+    if (hasValidationError) {
+        console.error('Additional validation failed. Stopping code generation.');
+        return; // 停止函数执行
+    }
+    // --- 原始校验逻辑结束 ---
+
 
     ui.showNotification('校验通过，正在请求后端生成ZIP包...', 'success');
 
@@ -94,7 +160,7 @@ window.generateFinalCode = async function() {
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
 
-        ui.showNotification('太棒了！ZIP包已开始下载！', 'success');
+        ui.showNotification('代码已开始下载, Enjoy Request', 'success');
 
     } catch (error) {
         ui.showNotification(`代码生成失败: ${error.message}`, 'error');
@@ -179,6 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
                 window.spiderGeneratorModule.populateExtractedFieldsTable(extractedDetails);
                 uiUtils.showNotification('cURL 字段已从后端提取并映射！');
+                // --- NEW: 在 cURL 字段提取后，也触发全局更新 ---
                 window.updateAllDynamicSelects();
             }
 
@@ -227,6 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (window.spiderGeneratorModule) {
             window.spiderGeneratorModule.init(elements.dynamicModulesContainer);
         }
+        // --- NEW: 在所有模块初始化完成后，统一调用一次全局更新 ---
         window.updateAllDynamicSelects();
     }
 
@@ -234,4 +302,80 @@ document.addEventListener('DOMContentLoaded', () => {
     if (elements.viewCodeBtn) elements.viewCodeBtn.addEventListener('click', () => elements.codeModalOverlay.classList.add('active'));
     if (elements.closeModalBtn) elements.closeModalBtn.addEventListener('click', () => elements.codeModalOverlay.classList.remove('active'));
     if (elements.copyBtn) elements.copyBtn.addEventListener('click', copyCode);
+
+    // --- NEW: 监听自定义事件，触发全局更新 ---
+    document.addEventListener('configUpdated', () => {
+        console.log('Config data updated, triggering global select refresh.');
+        window.updateAllDynamicSelects();
+    });
+
+    document.addEventListener('queueItersUpdated', () => {
+        console.log('QueueIters data updated, triggering global select refresh.');
+        window.updateAllDynamicSelects();
+    });
 });
+
+
+window.updateAllDynamicSelects = function() {
+    const state = window.getAppState();
+    const configNames = Object.keys(state.configs);
+    const queueIterNames = Object.keys(state.queueIters);
+
+    // 更新 ExecJS Config Selects
+    if (window.execjsModule && window.execjsModule.updateAllConfigSelects) {
+        window.execjsModule.updateAllConfigSelects();
+    }
+
+    // 更新 QueueIter 的内部 Config Selects 和 Field Selects
+    document.querySelectorAll('.queue-config-select').forEach(select => {
+        if (select.disabled) return;
+        const currentVal = select.value;
+        uiUtils.updateSelectOptions(select, configNames, '选择 Config');
+        if (configNames.includes(currentVal)) {
+            select.value = currentVal;
+        }
+        // 显式调用 updateFieldSelect 来更新关联的字段下拉菜单
+        const row = select.closest('.item-row');
+        const fieldSelect = row.querySelector('.queue-field-select');
+        if (window.queueModule && window.queueModule.updateFieldSelect) {
+            window.queueModule.updateFieldSelect(select.value, fieldSelect);
+        }
+        // 移除 dispatchEvent，因为我们已经显式更新了
+        // select.dispatchEvent(new Event('change'));
+    });
+
+    // --- FIX: 更新 Callback 的 QueueIter Selects ---
+    if (window.callbackModule && window.callbackModule.updateAllQueueIterSelects) {
+        window.callbackModule.updateAllQueueIterSelects();
+    }
+
+    // 更新 Callback 的 Config Selects 和 Field Selects
+    document.querySelectorAll('.callback-config-select').forEach(select => {
+        if (select.disabled) return;
+        const currentVal = select.value;
+        uiUtils.updateSelectOptions(select, configNames, '选择 Config');
+        if (configNames.includes(currentVal)) {
+            select.value = currentVal;
+        }
+        // 显式调用 updateFieldSelect 来更新关联的字段下拉菜单
+        const row = select.closest('.item-row');
+        const fieldSelect = row.querySelector('.callback-field-select');
+        if (window.callbackModule && window.callbackModule.updateFieldSelect) {
+            window.callbackModule.updateFieldSelect(select.value, fieldSelect);
+        }
+        // 移除 dispatchEvent，因为我们已经显式更新了
+        // select.dispatchEvent(new Event('change'));
+    });
+
+    // 更新 Main Request 的 QueueIter Selects
+    if (window.mainRequestGeneratorModule && window.mainRequestGeneratorModule.updateAllQueueIterSelects) {
+        setTimeout(() => {
+            window.mainRequestGeneratorModule.updateAllQueueIterSelects();
+        }, 50);
+    }
+
+    // 更新 Spider Generator (请求字段映射) 的提取字段 Config Selects
+    if (window.spiderGeneratorModule && window.spiderGeneratorModule.updateAllExtractedFieldsConfigSelects) {
+        window.spiderGeneratorModule.updateAllExtractedFieldsConfigSelects();
+    }
+};

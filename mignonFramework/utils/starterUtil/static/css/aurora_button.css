@@ -7,13 +7,50 @@
     text-align: center; /* 居中按钮 */
 }
 
-#aurora-generate-btn {
+/* 按钮容器，用于定位内部的Canvas和文本 */
+#aurora-btn-container {
+    position: relative; /* 为内部元素提供定位上下文 */
+    display: inline-block; /* 保持容器大小与Canvas一致 */
+    width: 250px;
+    height: 60px;
+    border-radius: 0.5rem;
+    overflow: hidden; /* 隐藏可能溢出的内容 */
     cursor: pointer;
+    /* Add transition for transform and box-shadow to the container itself */
     transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-    border-radius: 0.5rem; /* 匹配Canvas内的圆角绘制 */
 }
 
-#aurora-generate-btn:hover {
+#aurora-btn-container:hover {
     transform: translateY(-3px);
     box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+}
+
+/* 核心：将Canvas上的文本从Canvas中分离出来 */
+#aurora-btn-container .btn-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2; /* 确保文字在Canvas之上 */
+
+    font-family: var(--font-sans, 'Inter', sans-serif);
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: #ffffff; /* 用户要求：未悬停时为白色 */
+
+    transition: color 0.2s ease-in-out;
+    pointer-events: none; /* ****** 关键修复：允许鼠标事件穿透文字元素 ****** */
+}
+
+#aurora-btn-container:hover .btn-text {
+    color: #000000; /* 用户要求：悬停时为黑色 */
+}
+
+/* 将Canvas样式与容器对齐 */
+#aurora-generate-btn {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1; /* 确保Canvas在文本之下 */
+    border-radius: 0.5rem;
 }

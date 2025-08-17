@@ -50,6 +50,7 @@ window.queueModule = {
                         <div class="input-error-message">此项为必填</div>
                     </div>
                     <button type="button" class="secondary-button add-queue-target-btn" data-target="${blockId}-list">新增 @target 任务</button>
+                    <button type="button" class="delete-button-red delete-queue-block-btn">删除队列</button> <!-- 新增删除队列按钮 -->
                 </div>
                 <div class="item-header queue-target-row" style="margin-top: 1rem;">
                     <span>启用 @target</span>
@@ -67,6 +68,8 @@ window.queueModule = {
             queueBlocks.appendChild(block);
             createTargetRow(block.querySelector(`#${blockId}-list`)); // Add one default target row
             this.validate(); // Validate after creating new block
+            // --- NEW: 当新增 QueueIter 块时，触发更新事件 ---
+            document.dispatchEvent(new CustomEvent('queueItersUpdated'));
         };
 
         createQueueBlock(); // Add one default instance
@@ -93,13 +96,21 @@ window.queueModule = {
                 e.target.closest('.item-row').remove();
                 this.validate();
             }
+            // 新增：处理删除队列实例的点击事件
+            if (e.target.classList.contains('delete-queue-block-btn')) {
+                e.target.closest('.queue-block').remove();
+                this.validate();
+                // --- NEW: 当删除 QueueIter 块时，触发更新事件 ---
+                document.dispatchEvent(new CustomEvent('queueItersUpdated'));
+            }
         });
 
         queueBlocks.addEventListener('input', e => {
             // --- MODIFIED: Removed queue-field-name from validation trigger ---
             if (e.target.classList.contains('queue-instance-name')) {
                 this.validate(e.target);
-                if (window.updateAllDynamicSelects) window.updateAllDynamicSelects();
+                // --- NEW: 当 QueueIter 实例名称变化时，触发更新事件 ---
+                document.dispatchEvent(new CustomEvent('queueItersUpdated'));
             }
         });
 
@@ -145,7 +156,7 @@ window.queueModule = {
         const configNames = Object.keys(state.configs || {});
         const currentVal = configSelect.value;
 
-        uiUtils.updateSelectOptions(configSelect, configNames, '选择Config');
+        uiUtils.updateSelectOptions(configSelect, configNames, '选择 Config');
 
         if (configNames.includes(currentVal)) {
             configSelect.value = currentVal;
@@ -168,13 +179,25 @@ window.queueModule = {
         }
     },
 
+    /**
+     * 验证 QueueIter 模块的输入。
+     * @param {HTMLElement} [targetInput=null] - 触发验证的特定输入元素，用于精细控制。
+     * @returns {boolean} 如果存在任何错误，则返回 true。
+     */
     validate(targetInput = null) {
+        let hasModuleError = false; // Track if this module has any errors
+
         const validateField = (inputElement, isEmptyAllowed = false, isDuplicateCheck = false, scope = document) => {
             const name = inputElement.value.trim();
             let hasError = false;
             const errorMessageElement = inputElement.nextElementSibling && inputElement.nextElementSibling.classList.contains('input-error-message')
                 ? inputElement.nextElementSibling
                 : null;
+
+            // --- FIX: Declare namesMap at the top of the function scope ---
+            let namesMap;
+
+            // 1. Check for emptiness if not allowed
             if (!isEmptyAllowed && name === '') {
                 hasError = true;
             }
@@ -186,8 +209,8 @@ window.queueModule = {
                     // This part is no longer needed as there's no field name to check for duplicates
                     return false;
                 }
+                namesMap = new Map(); // Initialize namesMap here
                 const allInputs = scope.querySelectorAll(selector);
-                const namesMap = new Map();
                 allInputs.forEach(input => {
                     const val = input.value.trim();
                     if (val) namesMap.set(val, (namesMap.get(val) || 0) + 1);
@@ -199,6 +222,7 @@ window.queueModule = {
             }
             if (hasError) {
                 inputElement.classList.add('input-error');
+                hasModuleError = true; // Mark module as having an error
             } else {
                 inputElement.classList.remove('input-error');
             }
@@ -218,5 +242,7 @@ window.queueModule = {
             validateField(instanceNameInput, false, true, document.getElementById('queue-panel'));
             // No longer need to validate field names within the block
         });
+
+        return hasModuleError; // Return overall module validation status
     }
 };

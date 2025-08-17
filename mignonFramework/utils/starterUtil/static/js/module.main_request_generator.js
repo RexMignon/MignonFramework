@@ -54,6 +54,10 @@ window.mainRequestGeneratorModule = {
             if (e.target.classList.contains('delete-row-btn')) {
                 e.target.closest('.item-row').remove();
                 this.validate(); // 删除行后验证
+                // --- FIX: Trigger global update after deletion ---
+                if (window.updateAllDynamicSelects) {
+                    window.updateAllDynamicSelects();
+                }
             }
         });
 
@@ -90,6 +94,10 @@ window.mainRequestGeneratorModule = {
         // 初始状态下，回调触发下拉框应被禁用
         triggerSelect.disabled = true;
         this.validate(); // 新增行后验证
+        // --- FIX: Trigger global update after adding new row ---
+        if (window.updateAllDynamicSelects) {
+            window.updateAllDynamicSelects();
+        }
     },
 
     /**
@@ -113,6 +121,9 @@ window.mainRequestGeneratorModule = {
         // 恢复之前的选择（如果存在且有效）
         if (queueIterNames.includes(currentVal)) {
             selectElement.value = currentVal;
+        } else {
+            // 如果之前选中的 QueueIter 不存在，则重置为默认值
+            selectElement.value = '';
         }
         // 注意：这里不再触发 change 事件，因为 updateAllQueueIterSelects 会统一处理回调状态更新
     },
@@ -165,8 +176,11 @@ window.mainRequestGeneratorModule = {
 
     /**
      * 验证主请求模块的输入。
+     * @returns {boolean} 如果存在任何错误，则返回 true。
      */
     validate() {
+        let hasModuleError = false; // Track if this module has any errors
+
         const checkDuplicates = (selector, errorMsg, scope = document) => {
             const allInputs = scope.querySelectorAll(selector);
             const names = new Map();
@@ -182,6 +196,7 @@ window.mainRequestGeneratorModule = {
                     if (!wasInError) {
                         input.classList.add('input-error');
                         uiUtils.showNotification(`${errorMsg}: "${name}"`, 'error');
+                        hasModuleError = true; // Mark module as having an error
                     }
                 } else {
                     input.classList.remove('input-error');
@@ -194,5 +209,7 @@ window.mainRequestGeneratorModule = {
         if (queueList) {
             checkDuplicates('.main-request-queue-select', '主请求中关联的 QueueIter 实例重复', queueList);
         }
+
+        return hasModuleError; // Return overall module validation status
     }
 };

@@ -1,6 +1,6 @@
 import os
 from flask import Flask
-from .views import bp as starter_bp # 导入 views 模块中定义的 Blueprint 实例
+from .views import bp as starter_bp
 
 # 获取当前文件所在的目录的绝对路径
 _current_dir = os.path.dirname(os.path.abspath(__file__))

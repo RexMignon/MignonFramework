@@ -91,6 +91,60 @@ def count_lines_in_single_file(file_path: str):
         filename = os.path.basename(file_path)
         print(f"文件：'{filename}' 的总行数为：{line_count}")
         return line_count
+
+
+
+
+
+def count_lines_in_directory(path, ignore_dirs=None, ignore_exts=None):
+    """
+    递归统计指定文件夹下所有文件的总行数。
+
+    Args:
+        path (str): 要统计的目录路径。
+        ignore_dirs (list): 需要忽略的目录名称列表。
+        ignore_exts (list): 需要忽略的文件扩展名列表。
+
+    Returns:
+        int: 总行数。
+    """
+    if ignore_dirs is None:
+        ignore_dirs = ['.git', '__pycache__', '.idea', 'venv', 'node_modules']
+    if ignore_exts is None:
+        ignore_exts = ['.pyc', '.class', '.dll', '.so', '.exe', '.zip', '.gz', '.tar', '.rar', '.7z', '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.mp4', '.mkv', '.avi', '.mp3', '.wav', '.flac']
+
+    total_lines = 0
+    file_count = 0
+
+    print(f"开始统计目录: {path}")
+
+    for root, dirs, files in os.walk(path):
+        # 移除需要忽略的目录
+        dirs[:] = [d for d in dirs if d not in ignore_dirs]
+
+        for file_name in files:
+            # 跳过需要忽略的文件扩展名
+            if any(file_name.endswith(ext) for ext in ignore_exts):
+                continue
+
+            file_path = os.path.join(root, file_name)
+
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                    total_lines += len(lines)
+                    file_count += 1
+            except UnicodeDecodeError:
+                # 忽略无法用 UTF-8 解码的二进制文件
+                print(f"已跳过二进制文件或编码错误的文件: {file_path}")
+            except Exception as e:
+                print(f"处理文件 {file_path} 时发生错误: {e}")
+
+    return total_lines, file_count
+
+
+
+
 # 示例用法
 if __name__ == '__main__':
     # 假设有一个名为 'test_folder' 的文件夹，里面有一些文件

@@ -13,7 +13,7 @@ ProcessFile: 提供一个可配置、可断点续传、高性能的通用文件�
 """
 from mignonFramework.utils.Queues import QueueIter, target
 from mignonFramework.utils.Logger import Logger
-from mignonFramework.utils.CountLinesInFolder import count_lines_in_single_file as countSingleFileLines, count_lines_in_files as countFolderFileLines
+from mignonFramework.utils.CountLinesInFolder import count_lines_in_single_file as countSingleFileLines, count_lines_in_files as countFolderFileLines, count_lines_in_directory as countDirectoryFileLines
 from mignonFramework.utils.Deduplicate import deduplicate_file as deduplicateFile, read_and_write_lines as readLines2otherFiles, replace_line_with_file_content as replaceLineByFile, copy_line_by_number as copyLineByNumber
 from mignonFramework.utils.PortForwarding import start_services as portForwordRun
 from mignonFramework.utils.Curl2Reuqest import CurlToRequestsConverter as Curl2Reuqest
@@ -23,6 +23,7 @@ from mignonFramework.utils.MySQLManager import MysqlManager
 from mignonFramework.utils.ConfigReader import ConfigManager
 from mignonFramework.utils.ConfigReader import inject
 from mignonFramework.utils.execJSTo import execJS
+from mignonFramework.utils.mignonFramework_starter import start
 from mignonFramework.utils.SqlDDL2List import extract_column_names_from_ddl as extractDDL2List
 mignonFrameworkPrint = """                                                         
    __     __)                  
@@ -31,7 +32,7 @@ mignonFrameworkPrint = """
  ) /  |/  |__(_(_/_/ (_(_) / (_
 (_/   '       .-/              
              (_/               
-                             v 0.3 mignonFramework
+                             v 0.5 mignonFramework
 
 """
 print(mignonFrameworkPrint)

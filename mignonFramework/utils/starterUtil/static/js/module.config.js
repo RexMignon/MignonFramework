@@ -16,38 +16,49 @@ window.configModule = {
         container.appendChild(panel);
 
         const configBlocksContainer = panel.querySelector('#config-blocks-container');
-        panel.querySelector('#add-config-block-btn').addEventListener('click', () => this.createConfigBlock(configBlocksContainer, true)); // Pass true for isNew
+        panel.querySelector('#add-config-block-btn').addEventListener('click', () => {
+            this.createConfigBlock(configBlocksContainer, true); // Pass true for isNew
+            // --- NEW: 当新增 Config 块时，触发更新事件 ---
+            document.dispatchEvent(new CustomEvent('configUpdated'));
+        });
 
         // 委托事件处理，用于处理动态添加的 Config 块内部的事件
         configBlocksContainer.addEventListener('click', e => {
             if (e.target.classList.contains('add-config-row-btn')) {
                 const configBlock = e.target.closest('.config-block');
                 this.addConfigFieldRow(configBlock.querySelector('.config-fields-list'));
-                window.updateAllDynamicSelects(); // 字段新增后更新所有下拉菜单
+                // --- NEW: 当新增字段时，触发更新事件 ---
+                document.dispatchEvent(new CustomEvent('configUpdated'));
             } else if (e.target.classList.contains('delete-row-btn')) { // 统一使用 delete-row-btn
                 e.target.closest('.item-row').remove();
                 this.validate();
-                window.updateAllDynamicSelects(); // 字段删除后更新所有下拉菜单
+                // --- NEW: 当删除字段时，触发更新事件 ---
+                document.dispatchEvent(new CustomEvent('configUpdated'));
             } else if (e.target.classList.contains('delete-config-block-btn')) {
                 // 删除整个 Config 块
                 e.target.closest('.config-block').remove();
                 this.validate();
-                window.updateAllDynamicSelects(); // Config 块删除后更新所有下拉菜单
+                // --- NEW: 当删除 Config 块时，触发更新事件 ---
+                document.dispatchEvent(new CustomEvent('configUpdated'));
             }
         });
 
         // 委托事件处理，用于处理动态添加的 Config 块内部的输入变化 (实时视觉反馈)
         configBlocksContainer.addEventListener('input', e => {
-            if (e.target.classList.contains('config-class-name') || e.target.classList.contains('config-manager-name') || e.target.classList.contains('config-field-name') || e.target.classList.contains('config-manager-ini-path-input')) {
+            // ****** 关键修改：当 Config 类名、Manager 名称、INI 路径或字段名称改变时，也触发全局更新 ******
+            if (e.target.classList.contains('config-class-name') || e.target.classList.contains('config-manager-name') || e.target.classList.contains('config-manager-ini-path-input') || e.target.classList.contains('config-field-name')) {
                 // 只要输入变化就触发验证，现在空值也会立即显示提示
                 this.validate(e.target);
+                // --- NEW: 当关键输入变化时，触发更新事件 ---
+                document.dispatchEvent(new CustomEvent('configUpdated'));
             }
         });
 
         // 委托事件处理，用于处理动态添加的 Config 块内部的 select 变化
         configBlocksContainer.addEventListener('change', e => {
             if (e.target.classList.contains('config-field-type-select')) {
-                window.updateAllDynamicSelects(); // 字段类型变化后更新所有下拉菜单
+                // --- NEW: 当字段类型变化时，触发更新事件 ---
+                document.dispatchEvent(new CustomEvent('configUpdated'));
             }
         });
 
@@ -69,12 +80,12 @@ window.configModule = {
             <div class="config-block">
                 <div class="config-block-header">
                     <div class="input-field-wrapper">
-                        <label>Manager Name:</label>
+                        <label>Config实例名:</label>
                         <input type="text" class="config-manager-name" value="${managerNameValue}" placeholder="Manager Name">
                         <div class="input-error-message">此项为必填</div>
                     </div>
                     <div class="input-field-wrapper">
-                        <label>Class Name:</label>
+                        <label>被Dl类名:</label>
                         <input type="text" class="config-class-name" value="${classNameValue}" placeholder="Class Name">
                         <div class="input-error-message">此项为必填</div>
                     </div>
@@ -82,13 +93,17 @@ window.configModule = {
                 </div>
                 <div class="config-block-extra-settings">
                     <div class="input-field-wrapper">
-                        <label>Manager INI Path:</label>
+                        <label>配置ini的路径:</label>
                         <div class="path-input-group">
                             <span class="path-prefix">./resources/config/</span>
                             <input type="text" class="config-manager-ini-path-input" value="${managerIniPathValue}" placeholder="your_config_file_name">
                             <span class="path-suffix">.ini</span>
                         </div>
                         <div class="input-error-message"></div>
+                    </div>
+                    <!-- 新增：路径提示 -->
+                    <div class="path-tip">
+                        提示: JS文件路径通常为 <span class="copyable-path">./resources/js/</span>
                     </div>
                 </div>
                 <div class="item-header config-row">
@@ -115,7 +130,23 @@ window.configModule = {
         }
 
         this.validate(); // 新增块后验证
-        window.updateAllDynamicSelects(); // 新增 Config 块后更新所有下拉菜单
+
+        // 为新增的复制提示绑定事件
+        const copyablePathElement = newBlock.querySelector('.copyable-path');
+        if (copyablePathElement) {
+            copyablePathElement.addEventListener('click', () => {
+                navigator.clipboard.writeText(copyablePathElement.textContent).then(() => {
+                    uiUtils.showNotification('路径已复制!');
+                }).catch(err => {
+                    uiUtils.showNotification('复制失败!', 'error');
+                    console.error('Failed to copy path: ', err);
+                });
+            });
+            // 添加鼠标悬停样式
+            copyablePathElement.style.cursor = 'pointer';
+            copyablePathElement.style.textDecoration = 'underline';
+            copyablePathElement.style.color = '#3b82f6'; // 蓝色，表示可点击
+        }
     },
 
     /**
@@ -151,8 +182,11 @@ window.configModule = {
     /**
      * 验证 Config 模块的输入。
      * @param {HTMLElement} [targetInput=null] - 触发验证的特定输入元素，用于精细控制通知。
+     * @returns {boolean} 如果存在任何错误，则返回 true。
      */
     validate(targetInput = null) {
+        let hasModuleError = false; // Track if this module has any errors
+
         const validateField = (inputElement, isEmptyAllowed = false, isDuplicateCheck = false, scope = document) => {
             const name = inputElement.value.trim();
             let hasError = false;
@@ -197,6 +231,7 @@ window.configModule = {
             // Apply/remove error class
             if (hasError) {
                 inputElement.classList.add('input-error');
+                hasModuleError = true; // Mark module as having an error
             } else {
                 inputElement.classList.remove('input-error');
             }
@@ -275,6 +310,7 @@ window.configModule = {
                 // Apply/remove input-error class for the INI path input
                 if (iniPathHasError) {
                     managerIniPathInput.classList.add('input-error');
+                    hasModuleError = true; // Mark module as having an error
                 } else {
                     managerIniPathInput.classList.remove('input-error');
                 }
@@ -291,5 +327,7 @@ window.configModule = {
                 validateField(fieldInput, false, true, block);
             });
         });
+
+        return hasModuleError; // Return overall module validation status
     }
 };

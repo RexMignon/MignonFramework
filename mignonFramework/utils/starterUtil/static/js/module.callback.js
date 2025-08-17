@@ -140,10 +140,35 @@ window.callbackModule = {
     },
 
     /**
+     * 新增：更新所有 Callback 模块中 QueueIter 下拉菜单的方法。
+     * 这个方法会被 window.updateAllDynamicSelects 调用。
+     */
+    updateAllQueueIterSelects() {
+        const state = window.getAppState(); // 获取最新的状态
+        const queueIterNames = Object.keys(state.queueIters);
+
+        document.querySelectorAll('.callback-queue-select').forEach(select => {
+            const currentVal = select.value;
+            uiUtils.updateSelectOptions(select, queueIterNames, '选择 QueueIter');
+            if (queueIterNames.includes(currentVal)) {
+                select.value = currentVal;
+            } else {
+                // 如果之前选中的 QueueIter 不存在，则重置为默认值
+                select.value = '';
+            }
+            // 保持 dispatchEvent，因为它可能触发 callbackModule 内部的验证或其他逻辑
+            select.dispatchEvent(new Event('change'));
+        });
+    },
+
+    /**
      * 验证 Callback 模块的输入。
      * @param {HTMLElement} [targetInput=null] - 触发验证的特定输入元素，用于精细控制。
+     * @returns {boolean} 如果存在任何错误，则返回 true。
      */
     validate(targetInput = null) {
+        let hasModuleError = false; // Track if this module has any errors
+
         const validateField = (inputElement, isEmptyAllowed = false, isDuplicateCheck = false, scope = document) => {
             const name = inputElement.value.trim();
             let hasError = false;
@@ -176,6 +201,7 @@ window.callbackModule = {
             // Apply/remove error class
             if (hasError) {
                 inputElement.classList.add('input-error');
+                hasModuleError = true; // Mark module as having an error
             } else {
                 inputElement.classList.remove('input-error');
             }
@@ -215,6 +241,7 @@ window.callbackModule = {
                     if (!wasInError) {
                         select.classList.add('input-error');
                         uiUtils.showNotification(`${errorMsg}: "${value}"`, 'error');
+                        hasModuleError = true; // Mark module as having an error
                     }
                 } else {
                     select.classList.remove('input-error');
@@ -222,5 +249,7 @@ window.callbackModule = {
             });
         };
         checkDuplicatesSelect('.callback-queue-select', '关联的 QueueIter 重复');
+
+        return hasModuleError; // Return overall module validation status
     }
 };

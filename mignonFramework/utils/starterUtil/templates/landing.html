@@ -4,6 +4,12 @@
 
 {% block page_styles %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}">
+{# 移除 Google Fonts preconnect，因为现在使用本地字体 #}
+{# <link rel="preconnect" href="https://fonts.googleapis.com"> #}
+{# <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin> #}
+{# ****** 修改：引用本地的字体CSS文件 (css2.css 包含了 @font-face 规则) ****** #}
+{# 注意：landing.html 再次引用 css2.css 是为了确保其字体加载，即使 layout.html 已经引用了。 #}
+<link href="{{ url_for('static', filename='lib/css/css2.css') }}" rel="stylesheet">
 {% endblock %}
 
 {% block content %}
@@ -11,11 +17,18 @@
 <div class="particle-container"></div>
 <div class="content">
     <h1 class="main-title">Mignon Framework</h1>
-    <p class="subtitle">The Ultimate Toolkit</p>
-    <a href="/app" class="start-button">开始</a>
+    <p class="subtitle">Ultimate starter</p>
+    {# OLD: <a href="/app" class="start-button">开始</a> #}
+    {# NEW: Replace with a div containing canvas and span for aurora effect #}
+    <div id="aurora-start-btn-container">
+        <canvas id="aurora-start-btn" width="250" height="60"></canvas>
+        <span class="btn-text">开始</span>
+    </div>
 </div>
 {% endblock %}
 
 {% block page_scripts %}
+{# 确保 aurora_button.js 在 landing.js 之前加载 #}
+<script src="{{ url_for('static', filename='js/aurora_button.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/landing.js') }}" defer></script>
 {% endblock %}
