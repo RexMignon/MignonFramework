@@ -169,8 +169,6 @@ window.configModule = {
                 <option value="int" ${typeValue === 'int' ? 'selected' : ''}>int</option>
                 <option value="float" ${typeValue === 'float' ? 'selected' : ''}>float</option>
                 <option value="bool" ${typeValue === 'bool' ? 'selected' : ''}>bool</option>
-                <option value="list" ${typeValue === 'list' ? 'selected' : ''}>list</option>
-                <option value="dict" ${typeValue === 'dict' ? 'selected' : ''}>dict</option>
             </select>
             <input type="text" class="config-field-default-value" placeholder="默认值" value="${defaultValue}">
             <button type="button" class="delete-row-btn delete-button-red-small">删除</button>
