@@ -186,7 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
         codeLoader: document.getElementById('code-loader'),
         codeModalOverlay: document.getElementById('code-modal-overlay'),
         closeModalBtn: document.getElementById('close-modal-btn'),
-        copyBtn: document.getElementById('copy-button'),
+        copyBtn: document.getElementById('copy-button'), // 获取复制按钮
         dynamicModulesContainer: document.getElementById('dynamic-modules-container')
     };
 
@@ -226,7 +226,12 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             elements.generatedCodeEl.textContent = result.generated_code;
-            if (window.Prism) Prism.highlightElement(elements.generatedCodeEl);
+            // 添加延迟，确保DOM更新和CSS应用完成后再高亮
+            if (window.Prism) {
+                setTimeout(() => {
+                    Prism.highlightElement(elements.generatedCodeEl);
+                }, 50); // 50ms 延迟
+            }
             elements.viewCodeBtn.disabled = false;
             elements.statusLight.className = result.status_code && String(result.status_code).startsWith('2')
                 ? 'status-light success'
@@ -259,17 +264,28 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // 复制代码函数
     function copyCode() {
         if (elements.generatedCodeEl) {
             try {
+                // 使用 document.execCommand('copy') 兼容性更好
                 const selection = window.getSelection();
                 const range = document.createRange();
                 range.selectNodeContents(elements.generatedCodeEl);
                 selection.removeAllRanges();
                 selection.addRange(range);
                 document.execCommand('copy');
-                selection.removeAllRanges();
-                uiUtils.showNotification('代码已复制!');
+                selection.removeAllRanges(); // 清除选择
+
+                // 显示复制成功提示
+                const copyTooltip = elements.copyBtn.querySelector('.copy-tooltip');
+                if (copyTooltip) {
+                    copyTooltip.classList.add('copied');
+                    setTimeout(() => {
+                        copyTooltip.classList.remove('copied');
+                    }, 2000); // 2秒后隐藏提示
+                }
+                uiUtils.showNotification('代码已复制!'); // 使用统一的通知系统
             } catch (err) {
                 uiUtils.showNotification('复制失败!', 'error');
                 console.error('Failed to copy text: ', err);
@@ -299,8 +315,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (elements.generateBtn) elements.generateBtn.addEventListener('click', convertAndRun);
-    if (elements.viewCodeBtn) elements.viewCodeBtn.addEventListener('click', () => elements.codeModalOverlay.classList.add('active'));
+    if (elements.viewCodeBtn) {
+        elements.viewCodeBtn.addEventListener('click', () => {
+            elements.codeModalOverlay.classList.add('active');
+            // 在打开模态框时，强制重新高亮代码，以解决潜在的加载时序问题
+            if (window.Prism) {
+                setTimeout(() => {
+                    Prism.highlightElement(elements.generatedCodeEl);
+                }, 50); // 50ms 延迟
+            }
+        });
+    }
     if (elements.closeModalBtn) elements.closeModalBtn.addEventListener('click', () => elements.codeModalOverlay.classList.remove('active'));
+    // 绑定复制按钮的点击事件
     if (elements.copyBtn) elements.copyBtn.addEventListener('click', copyCode);
 
     // --- NEW: 监听自定义事件，触发全局更新 ---

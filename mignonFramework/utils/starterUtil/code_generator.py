@@ -31,6 +31,7 @@ class CodeGenerator:
         """
         # --- 生成主爬虫脚本 (main.py) ---
         self.code_parts.append("log = Logger(True)")
+        self.code_parts.append("\n# Have a Good Request\n#        --By mignonFramework\n\n")
         self.code_parts.append("\n# ======================Managers & Queues=====================")
         self._generate_config_managers_and_inis()
         self._generate_queue_instances()
@@ -94,14 +95,21 @@ class CodeGenerator:
         execjs_configs = self.state.get('execjs', [])
         if not execjs_configs:
             return
+
+        py_func_strs = []
+        js_file_contents = {}  # 使用一个字典来收集JS文件内容，按文件名分组
+
         for config in execjs_configs:
             method_name = config.get('methodName')
             params = config.get('params', [])
             params_str = ", ".join(params)
-            js_content = f"function {method_name}({params_str}) {{\n    // Your JavaScript logic here\n    return null;\n}}\n"
-            decorator_arg, js_filename = "", ""
+
+            # 生成Python函数装饰器代码
+            decorator_arg = ""
+            js_filename = ""
             config_class_name = config.get('configClassName')
             config_field_name = config.get('pathFromConfigField')
+
             if config_class_name and config_field_name:
                 decorator_arg = f"{config_class_name.lower()}.{config_field_name}"
                 js_path_from_config = ""
@@ -121,10 +129,23 @@ class CodeGenerator:
                 static_path = config.get('staticPath')
                 decorator_arg = f"'./resources/js/{static_path}'"
                 js_filename = static_path
+
             if js_filename:
-                self.output_files["js"][js_filename] = js_content
+                # 生成JS函数内容
+                js_content = f"function {method_name}({params_str}) {{\n    // Your JavaScript logic here\n    return null;\n}}\n\n"
+
+                # 收集JS文件内容，确保不会覆盖
+                if js_filename not in js_file_contents:
+                    js_file_contents[js_filename] = ""
+                js_file_contents[js_filename] += js_content
+
             py_func_str = f"@execJS({decorator_arg})\ndef {method_name}({params_str}):\n    return None\n"
-            self.code_parts.append(py_func_str)
+            py_func_strs.append(py_func_str)
+
+        # 将生成的JS文件内容添加到输出
+        self.output_files["js"] = js_file_contents
+        # 将所有Python函数代码添加到主脚本
+        self.code_parts.extend(py_func_strs)
 
     def _generate_insert_quick_files(self):
         """
@@ -134,9 +155,11 @@ class CodeGenerator:
 
 log = Logger(True)
 
-InsertQuick(
-    eazy=True
-).run()
+# have a Good Insert QQQuick
+#                 --by mignonFramework
+
+
+InsertQuick(eazy=True).run()
 """
         self.output_files["py"]["insertQuickly.py"] = py_content
 
@@ -227,7 +250,7 @@ path = PATH_TO_YOUR_FILE_OR_DIRECTORY
                     code_block += f"    {field.get('name')}: {field.get('type', 'str')}\n"
 
             instance_name = class_name.lower()
-            code_block += f"\n{instance_name} = {manager_name}.getInstance({class_name})"
+            code_block += f"\n{instance_name}: {class_name} = {manager_name}.getInstance({class_name})"
 
             self.code_parts.append(code_block)
 
@@ -425,6 +448,7 @@ def requestTo():
             )
             if response.status_code == 200:
                 res = response
+                print(res.text)
                 # TODO: You may need to process 'res' and assign to 'data'
                 # data = res.json() 
                 return True

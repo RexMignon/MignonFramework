@@ -5,6 +5,9 @@
 {% block page_styles %}
 {# 加载模块化CSS文件 #}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/shared.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/prism/prism-coy.min.css') }}">
+<script src="{{ url_for('static', filename='lib/prism/prism.min.js') }}" defer></script>
+<script src="{{ url_for('static', filename='lib/prism/prism-python.min.js') }}" defer></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/modules.css') }}">
 {# ****** 关键修改：加载新的Canvas按钮样式 ****** #}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/css/css2.css') }}">
