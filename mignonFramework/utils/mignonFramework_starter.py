@@ -3,12 +3,12 @@
 # 将导入从 ui_app 改为 app_runner
 from mignonFramework.utils.starterUtil.app_runner import StarterAppRunner
 
-def start():
+def start(port: int = 5001):
     """
     MignonFramework 启动器的主入口点。
     """
     try:
-        app = StarterAppRunner()
+        app = StarterAppRunner(port)
         app.run()
     except ImportError as e:
         print(f"\n[错误] 无法启动 Starter 应用: {e}")

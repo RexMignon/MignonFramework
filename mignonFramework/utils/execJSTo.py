@@ -63,8 +63,6 @@ def execJS(js_file_path: str, js_function_name: str = None):
                 raise
 
             try:
-                # 5. 按顺序传入参数，调用 JavaScript 函数并返回结果
-                print(f"--- [ExecJS] Calling JS function '{target_js_func}' with args {final_args} ---")
                 result = ctx.call(target_js_func, *final_args)
                 return result
             except Exception as e:

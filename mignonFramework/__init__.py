@@ -25,6 +25,7 @@ from mignonFramework.utils.ConfigReader import inject
 from mignonFramework.utils.execJSTo import execJS
 from mignonFramework.utils.mignonFramework_starter import start
 from mignonFramework.utils.SqlDDL2List import extract_column_names_from_ddl as extractDDL2List
+from mignonFramework.utils.getJSONequals import jsonContrast
 mignonFrameworkPrint = """                                                         
    __     __)                  
   (, /|  /|   ,                
