@@ -45,7 +45,7 @@ window.callbackModule = {
                 <select class="callback-field-select" disabled>
                     <option value="">-</option>
                 </select>
-                <input type="text" class="callback-assign-value" value="que.current_index + 1" disabled>
+                <input type="text" class="callback-assign-value" value="que.current_index" disabled>
                 <button type="button" class="secondary-button delete-row-btn">删除</button>
             `;
             callbackList.appendChild(uiUtils.createDOMElement('div', 'item-row callback-row', rowHTML));
@@ -95,7 +95,7 @@ window.callbackModule = {
                     selects.forEach(sel => sel.innerHTML = '<option value="">-</option>');
                     input.value = '';
                 } else {
-                    input.value = 'que.current_index + 1';
+                    input.value = 'que.current_index';
                     if (window.updateAllDynamicSelects) window.updateAllDynamicSelects();
                 }
             }
