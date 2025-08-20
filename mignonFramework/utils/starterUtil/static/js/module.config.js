@@ -131,21 +131,54 @@ window.configModule = {
 
         this.validate(); // 新增块后验证
 
-        // 为新增的复制提示绑定事件
+        // 获取元素
         const copyablePathElement = newBlock.querySelector('.copyable-path');
+
         if (copyablePathElement) {
             copyablePathElement.addEventListener('click', () => {
-                navigator.clipboard.writeText(copyablePathElement.textContent).then(() => {
-                    uiUtils.showNotification('路径已复制!');
-                }).catch(err => {
-                    uiUtils.showNotification('复制失败!', 'error');
-                    console.error('Failed to copy path: ', err);
-                });
+                const textToCopy = copyablePathElement.textContent;
+
+                // 检查是否支持现代 Clipboard API
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    // 使用现代 API
+                    navigator.clipboard.writeText(textToCopy)
+                        .then(() => {
+                            uiUtils.showNotification('路径已复制!');
+                        })
+                        .catch(err => {
+                            uiUtils.showNotification('复制失败!', 'error');
+                            console.error('Failed to copy path: ', err);
+                        });
+                } else {
+                    // 回退到 document.execCommand 方法
+                    const textArea = document.createElement("textarea");
+                    textArea.value = textToCopy;
+                    // 使 textarea 不可见
+                    textArea.style.position = "fixed";
+                    textArea.style.left = "-9999px";
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+
+                    try {
+                        const successful = document.execCommand('copy');
+                        if (successful) {
+                            uiUtils.showNotification('路径已复制!');
+                        } else {
+                            uiUtils.showNotification('复制失败!', 'error');
+                        }
+                    } catch (err) {
+                        uiUtils.showNotification('复制失败!', 'error');
+                        console.error('Failed to copy path: ', err);
+                    }
+                    document.body.removeChild(textArea);
+                }
             });
+
             // 添加鼠标悬停样式
             copyablePathElement.style.cursor = 'pointer';
             copyablePathElement.style.textDecoration = 'underline';
-            copyablePathElement.style.color = '#3b82f6'; // 蓝色，表示可点击
+            copyablePathElement.style.color = '#3b82f6';
         }
     },
 

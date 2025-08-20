@@ -396,6 +396,7 @@ path = PATH_TO_YOUR_FILE_OR_DIRECTORY
 def preCheckRequest():
 {globals_line}
 {copies_lines}
+    response = None
     response = requests.{method}(
         {request_params_str}
     )
@@ -440,9 +441,9 @@ def requestTo():
 {globals_line}
 {copies_lines}
     status = 0
+    response = None
     while True:
         try:
-            response = None
             response = requests.{method}(
                 {request_params_str}
             )

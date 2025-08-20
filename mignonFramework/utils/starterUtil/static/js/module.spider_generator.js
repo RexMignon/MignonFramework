@@ -69,6 +69,11 @@ window.spiderGeneratorModule = {
             }
         });
 
+        // --- NEW FIX: Call populateExtractedFieldsTable on init to ensure structure exists ---
+        // This will create the empty sections and their "Add Field" buttons,
+        // allowing updateAllExtractedFieldsConfigSelects to find the dropdowns.
+        this.populateExtractedFieldsTable({}); // Pass an empty object to initialize empty sections
+
         // 确保面板可见
         setTimeout(() => panel.classList.add('visible'), 500); // 稍微延迟，避免与其他模块动画冲突
     },
@@ -94,8 +99,13 @@ window.spiderGeneratorModule = {
             const dataForType = extractedData[typeInfo.id] || {};
             const fieldNames = Object.keys(dataForType).sort();
 
-            if (fieldNames.length > 0) {
-                hasAnyData = true;
+            // Always create the section even if it has no initial data,
+            // so the "Add Field" button and dropdowns are present for later updates.
+            // Only set hasAnyData to true if there's actual data from cURL.
+            if (fieldNames.length > 0 || Object.keys(extractedData).length === 0) { // Keep section if it has data OR if it's initial empty state
+                if (fieldNames.length > 0) {
+                    hasAnyData = true; // Only set this if there's actual cURL data
+                }
                 const sectionHtml = `
                     <div class="section-header">
                         <h4>${typeInfo.title}</h4>
@@ -121,7 +131,8 @@ window.spiderGeneratorModule = {
         });
 
         // 根据是否有数据来显示或隐藏整个容器
-        if (hasAnyData) {
+        // Only make the container visible if it has actual cURL data, or if it's the initial empty state.
+        if (hasAnyData || Object.keys(extractedData).length === 0) { // Show if there's data OR if it's initial empty call
             fieldSectionsContainerEl.classList.add('visible');
         } else {
             fieldSectionsContainerEl.classList.remove('visible');
@@ -187,8 +198,13 @@ window.spiderGeneratorModule = {
             // 如果之前选中的 Config 不存在，则重置为默认值
             configSelectElement.value = '';
         }
-        // 触发 change 事件以更新 Config 字段下拉菜单
-        configSelectElement.dispatchEvent(new Event('change'));
+
+        // --- IMPORTANT FIX: Explicitly call updateConfigFieldSelect here ---
+        // This ensures the field dropdown is updated immediately after the config select's value is set.
+        this.updateConfigFieldSelect(configSelectElement.value, configFieldSelectElement);
+
+        // 移除这一行，因为它现在是多余的，并且可能导致不必要的事件触发
+        // configSelectElement.dispatchEvent(new Event('change'));
     },
 
     /**
