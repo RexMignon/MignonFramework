@@ -75,6 +75,7 @@ class CurlToRequestsConverter:
         }
 
         get_data_as_params = False
+        content_type = '' # 用于追踪 Content-Type 请求头
 
         i = 1
         while i < len(command_list):
@@ -100,6 +101,10 @@ class CurlToRequestsConverter:
                     parts = command_list[i + 1].split(':', 1)
                     header_key = parts[0].strip()
                     header_value = parts[1].strip() if len(parts) > 1 else ''
+
+                    if header_key.lower() == 'content-type':
+                        content_type = header_value.strip().lower() # 存储 Content-Type
+
                     if header_key.lower() not in ['content-length']:
                         data['headers'][header_key] = header_value
                     i += 1
@@ -113,6 +118,11 @@ class CurlToRequestsConverter:
                 if i + 1 < len(command_list):
                     raw_data_str = command_list[i + 1]
 
+                    # 检查并移除 cURL 中 `$''` 语法可能留下的前导 '$'
+                    # shlex.split 通常会处理引号，但 `$ ` 可能被保留。
+                    if raw_data_str.startswith('$'):
+                        raw_data_str = raw_data_str.lstrip('$')
+
                     if get_data_as_params:
                         parsed_params = urllib.parse.parse_qs(raw_data_str)
                         for k, v in parsed_params.items():
@@ -120,10 +130,17 @@ class CurlToRequestsConverter:
                     else:
                         if data['method'] == 'GET':
                             data['method'] = 'POST'
-                        parsed_body = self._try_parse_json(raw_data_str)
-                        if isinstance(parsed_body, dict):
-                            data['json'] = parsed_body
+
+                        # 如果 Content-Type 是 JSON，则尝试解析。如果失败，则回退到原始数据。
+                        if 'application/json' in content_type:
+                            try:
+                                data['json'] = json.loads(raw_data_str)
+                            except json.JSONDecodeError:
+                                # 根据用户要求：不抛出异常，回退到原始数据处理
+                                data['data'] = raw_data_str
+                                print("警告: Content-Type 为 'application/json'，但数据无法解析为 JSON。将作为原始数据 (bytes) 处理。")
                         else:
+                            # 否则，作为原始数据处理
                             data['data'] = raw_data_str
                     i += 1
 
@@ -177,7 +194,7 @@ class CurlToRequestsConverter:
 
         exec_globals = {
             'requests': requests,
-            'json': json
+            'json': json # 确保 json 在 exec 环境中可用
         }
 
         response_obj = None
@@ -202,6 +219,7 @@ class CurlToRequestsConverter:
             except json.JSONDecodeError:
                 try:
                     # 失败后，尝试使用ast.literal_eval作为备用方案
+                    # 注意: ast.literal_eval 不应直接用于不可信的外部数据，这里仅作为结构性检查
                     ast.literal_eval(response_text)
                     is_json = True
                 except (ValueError, SyntaxError):
@@ -226,12 +244,17 @@ class CurlToRequestsConverter:
             lines.append(f"cookies = {json.dumps(p['cookies'], indent=4, ensure_ascii=False)}\n")
         if p['params']:
             lines.append(f"params = {json.dumps(p['params'], indent=4, ensure_ascii=False)}\n")
+
+        # --- 针对用户对 'data' 参数的特定要求进行修改 ---
         if p['json'] is not None:
+            # 如果解析为 JSON 对象，则使用 json 参数
             json_str = json.dumps(p['json'], indent=4, ensure_ascii=False)
+            # requests 的 json 参数不需要这些替换，但为了保持与原始生成器的一致性而保留
             json_str = json_str.replace('true', 'True').replace('false', 'False').replace('null', 'None')
             lines.append(f"json_data = {json_str}\n")
         elif p['data'] is not None:
-            lines.append(f"data = {repr(p['data'])}\n")
+            escaped_data_repr = repr(p['data'])
+            lines.append(f"data = {escaped_data_repr}.encode('unicode_escape') # 注意：此编码方式对于标准JSON请求可能需要调整。\n")
 
         if p['files']:
             files_list = []
@@ -256,7 +279,7 @@ class CurlToRequestsConverter:
         if p['json'] is not None:
             request_params.append("json=json_data")
         elif p['data'] is not None:
-            request_params.append("data=data")
+            request_params.append("data=data") # 此处 data 现在是 bytes 类型
         if p['files']:
             request_params.append("files=files")
         if p['auth']:
