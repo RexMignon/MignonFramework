@@ -5,11 +5,14 @@ import time
 import os
 import socket
 import sys
+import threading
 from functools import wraps
+
+from mignonFramework.utils.Logger import Logger
 
 
 class MicroServiceByNodeJS:
-    def __init__(self, client_only=False, port=3000, url_base="127.0.0.1", scan_dir="./resources/js",
+    def __init__(self, client_only=False, logger:Logger=None, port=3000, url_base="127.0.0.1", scan_dir="./resources/js",
                  invoker_path=None, js_log_print=True):
         current_dir = os.path.dirname(os.path.abspath(__file__))
         static_folder = os.path.join(current_dir, 'starterUtil', "static")
@@ -20,7 +23,22 @@ class MicroServiceByNodeJS:
         self.url_base = f"http://{url_base}:{self.port}"
         self.process = None
         self.client_only = client_only
+        self.logger:Logger = logger
         self._start_server(invoker_path, scan_dir)
+
+    def _stream_printer(self, stream, output_stream):
+        """
+        在后台线程中读取子进程的流, 并将其直接打印到Python的标准流中.
+        你全局的 Logger Hook 会自动捕获这里的 print 输出.
+        """
+        try:
+            for line in iter(stream.readline, ''):
+                if line:
+                    self.logger.write_log("INFO", line.strip())
+            stream.close()
+        except Exception as e:
+            # 主进程关闭时，这里的读取可能会出错，属于正常现象
+            pass
 
     def _is_port_in_use(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -59,9 +77,9 @@ class MicroServiceByNodeJS:
             try:
                 print(f"检测到端口 {port} 被进程 {pid} 占用，正在尝试强制关闭。")
                 if sys.platform == 'win32':
-                    subprocess.run(['taskkill', '/F', '/PID', pid], check=True)
+                    subprocess.run(['taskkill', '/F', '/PID', pid], check=True, capture_output=True)
                 else:
-                    subprocess.run(['kill', pid], check=True)
+                    subprocess.run(['kill', pid], check=True, capture_output=True)
                 print(f"进程 {pid} 已被终止。")
                 return True
             except (subprocess.CalledProcessError, FileNotFoundError):
@@ -71,7 +89,6 @@ class MicroServiceByNodeJS:
     def _start_server(self, invoker_path, scan_dir):
         if self._is_port_in_use():
             if self._verify_service():
-
                 if self.client_only:
                     return
             else:
@@ -96,31 +113,51 @@ class MicroServiceByNodeJS:
 
         project_root = os.getcwd()
         env = os.environ.copy()
-        project_root = os.getcwd()
         node_modules_path = os.path.join(project_root, 'node_modules')
 
         if 'NODE_PATH' in env:
             env['NODE_PATH'] = f"{node_modules_path}{os.pathsep}{env['NODE_PATH']}"
         else:
             env['NODE_PATH'] = node_modules_path
-        if self.js_log:
 
-            self.process = subprocess.Popen(
-                command,
-                cwd = project_root,
-                env = env,
-                shell=False
-            )
+        popen_kwargs = {
+            "cwd": project_root,
+            "env": env,
+            "shell": False
+        }
+
+        if self.js_log:
+            # 重定向输出流到管道
+            popen_kwargs['stdout'] = subprocess.PIPE
+            popen_kwargs['stderr'] = subprocess.PIPE
+            popen_kwargs['text'] = True
+            popen_kwargs['bufsize'] = 1
         else:
-            self.process = subprocess.Popen(
-                command,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                env=env,
-                shell=False
+            popen_kwargs['stdout'] = subprocess.DEVNULL
+            popen_kwargs['stderr'] = subprocess.DEVNULL
+
+        self.process = subprocess.Popen(command, **popen_kwargs)
+
+        # 如果开启了日志，则启动后台线程来打印日志
+        if self.js_log:
+            if self.logger is None:
+                self.logger = Logger(True)
+            stdout_thread = threading.Thread(
+                target=self._stream_printer,
+                args=(self.process.stdout, sys.stdout)  # 将子进程stdout打印到sys.stdout
             )
+            stdout_thread.daemon = True
+            stdout_thread.start()
+
+            stderr_thread = threading.Thread(
+                target=self._stream_printer,
+                args=(self.process.stderr, sys.stderr)  # 将子进程stderr打印到sys.stderr
+            )
+            stderr_thread.daemon = True
+            stderr_thread.start()
+
         atexit.register(self.shutdown)
-        print("Node.js Service started.")
+        print("Node.js Service process has been started.")
 
     def invoke(self, file_name, func_name, *args, **kwargs):
         payload = {
@@ -137,8 +174,11 @@ class MicroServiceByNodeJS:
             if result['success']:
                 return result['result']
             else:
-                raise RuntimeError(f"JS execution failed: {result.get('error', '未知错误')}")
+                error_message = f"JS execution failed: {result.get('error', '未知错误')}"
+                print(error_message, file=sys.stderr)
+                raise RuntimeError(error_message)
         except requests.exceptions.RequestException as e:
+            print(f"Could not connect to Node.js service: {e}", file=sys.stderr)
             if self.process:
                 self.shutdown()
             raise ConnectionError(f"Could not connect to Node.js service: {e}")
@@ -146,8 +186,12 @@ class MicroServiceByNodeJS:
     def shutdown(self):
         if self.process and self.process.poll() is None:
             self.process.terminate()
-            self.process.wait()
-            print("Node.js service shut down.")
+            try:
+                self.process.wait(timeout=5)
+                print("Node.js service shut down gracefully.")
+            except subprocess.TimeoutExpired:
+                print("Node.js service did not terminate, killing it.", file=sys.stderr)
+                self.process.kill()
             self.process = None
 
     def evalJS(self, file_name, func_name=None):
@@ -163,8 +207,11 @@ class MicroServiceByNodeJS:
             return wrapper
 
         return decorator
+
     def startAsMicro(self):
-        while True:
-            input()
-
-
+        try:
+            while True:
+                input()
+        except KeyboardInterrupt:
+            print("Received exit signal, shutting down service.")
+            self.shutdown()
