@@ -27,7 +27,6 @@ function initLandingPage() {
         }
     }
 
-    // --- NEW: Initialize AuroraButton for the Start button ---
     const startButtonContainer = document.getElementById('aurora-start-btn-container'); // 获取新的容器
     if (startButtonContainer) {
         // 创建一个新的 AuroraButton 实例，并传入导航回调
