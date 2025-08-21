@@ -22,3 +22,13 @@ class BaseWriter(ABC):
             :param test:
         """
         pass
+
+    def upsert_single(self, data_dict: dict[str, any], table_name: str, test: bool = False) -> bool:
+        """
+        单行恢复模式
+        :param data_dict: 单条字典
+        :param table_name: 表名
+        :param test:
+        :return:
+        """
+        pass
