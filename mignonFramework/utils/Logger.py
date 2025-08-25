@@ -28,8 +28,8 @@ class _AutoLoggerStream:
 
     def write(self, text: str):
         """当任何代码调用 print() 或 sys.stdout.write() 时，此方法会被自动调用。"""
-        # 检查日志记录是否被临时禁用
-        if not getattr(self._logger.patch_is_active, 'value', False):
+        # 修改点：检查全局的、线程安全的日志激活状态
+        if not self._logger.is_active:
             self._original_stdout.write(text)
             return
 
@@ -58,7 +58,20 @@ class _AutoLoggerStream:
                     self._original_stdout.write(text)
                     return
 
-                self._logger.write_log("INFO", stripped_text)
+                # 这里直接调用 write_log 可能会导致因 \n 而产生的额外换行
+                # 我们直接构建消息并写入，以获得更精确的控制
+                timestamp = self._logger.get_timestamp()
+                level = "INFO"
+                level_color = self._logger.color_map.get(level, '')
+                # 普通print自带换行, console_message不加\n
+                console_message = (
+                    f"{timestamp} {_Colors.BLUE}[main]{_Colors.RESET} "
+                    f"{level_color}[{level}]{_Colors.RESET} {stripped_text}"
+                )
+                sys.__stdout__.write(console_message + '\n')
+                sys.__stdout__.flush()
+                self._logger.write_log_to_file_only(level, stripped_text, timestamp)
+
         except KeyboardInterrupt:
             timestamp = self._logger.get_timestamp()
             level = "EXIST"
@@ -67,8 +80,15 @@ class _AutoLoggerStream:
                 f"\n{timestamp} {_Colors.BLUE}[main]{_Colors.RESET} "
                 f"{level_color}[{level}]{_Colors.RESET} User interruption detected. Exiting gracefully."
             )
-            self._original_stdout.write(console_message)
+            self._original_stdout.write(console_message + '\n')
+            self._original_stdout.flush()
             sys.exit(130)
+        # 增加对其他异常的捕获，防止日志系统本身崩溃
+        except Exception as e:
+            tb_string = "".join(traceback.format_exception(type(e), e, e.__traceback__))
+            error_msg = f"FATAL: Exception in _AutoLoggerStream.write.\n  - Error: {e!r}\n  - Traceback:\n{tb_string}"
+            sys.__stderr__.write(error_msg)
+
 
     def flush(self):
         """提供 flush 方法以兼容标准流接口。"""
@@ -92,25 +112,40 @@ class Logger:
             "EXIST": _Colors.MAGENTA # 新增 EXIST 级别颜色
         }
 
-        # 新增：一个线程安全的标志，用于控制自动日志是否激活
-        self.patch_is_active = threading.local()
-        self.patch_is_active.value = enabld
+        # --- 修改核心 ---
+        # 1. 使用普通的实例变量存储状态
+        self._patch_is_active = enabld
+        # 2. 创建一个专用的锁来保护这个状态
+        self._patch_state_lock = threading.RLock()
 
         if enabld:
+            # 在替换sys.stdout之前，先保存原始的stdout
+            self._original_stdout = sys.stdout
             sys.stdout = _AutoLoggerStream(self)
-            self.write_log("SYSTEM", "Auto-logging enabled. Standard output is now being logged\n")
+            self.write_log("SYSTEM", "Auto-logging enabled. Standard output is now being logged.")
+
+    # 3. 创建线程安全的属性来访问和修改状态
+    @property
+    def is_active(self):
+        with self._patch_state_lock:
+            return self._patch_is_active
+
+    @is_active.setter
+    def is_active(self, value):
+        with self._patch_state_lock:
+            self._patch_is_active = bool(value)
 
     @contextlib.contextmanager
     def disabled(self):
         """
         一个上下文管理器，用于临时禁用 stdout 的自动日志记录。
         """
-        original_state = getattr(self.patch_is_active, 'value', False)
+        original_state = self.is_active
         try:
-            self.patch_is_active.value = False
+            self.is_active = False
             yield
         finally:
-            self.patch_is_active.value = original_state
+            self.is_active = original_state
 
     def get_timestamp(self) -> str:
         """返回一个带毫秒的高精度时间戳字符串。"""
@@ -153,15 +188,18 @@ class Logger:
         if timestamp is None:
             timestamp = self.get_timestamp()
 
-        file_message = f"{timestamp} [main] [{level}] {message}"
-        log_file = self._get_current_log_filepath()
+        # 对多行消息进行处理，确保每行都有时间戳
+        lines = str(message).split('\n')
 
         with self._lock:
+            log_file = self._get_current_log_filepath()
             try:
                 os.makedirs(os.path.dirname(log_file), exist_ok=True)
                 with open(log_file, 'a', encoding='utf-8') as f:
-                    f.write(file_message + '\n')
-                self._line_counts[log_file] = self._line_counts.get(log_file, 0) + 1
+                    for line in lines:
+                        file_message = f"{timestamp} [main] [{level}] {line}"
+                        f.write(file_message + '\n')
+                        self._line_counts[log_file] = self._line_counts.get(log_file, 0) + 1
             except Exception as e:
                 sys.__stderr__.write(f"FATAL: Logger failed to write to file. Error: {e}\n")
 
@@ -170,12 +208,16 @@ class Logger:
         timestamp = self.get_timestamp()
 
         level_color = self.color_map.get(level, '')
+
+        # 确保日志消息总是在新的一行开始
         console_message = (
             f"\n{timestamp} {_Colors.BLUE}[main]{_Colors.RESET} "
             f"{level_color}[{level}]{_Colors.RESET} {message}"
         )
-        output_stream = sys.__stderr__ if level == "ERROR" else sys.__stdout__
-        output_stream.write(console_message)
+
+        # 错误消息写入 stderr，其他写入原始的 stdout
+        output_stream = sys.__stderr__ if level == "ERROR" else getattr(self, '_original_stdout', sys.__stdout__)
+        output_stream.write(console_message + '\n')
         output_stream.flush()
 
         self.write_log_to_file_only(level, message, timestamp)
@@ -195,3 +237,4 @@ class Logger:
                 self.write_log("ERROR", error_msg)
                 raise
         return wrapper
+
