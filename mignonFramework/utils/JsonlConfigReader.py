@@ -120,7 +120,7 @@ class _ConfigList(Generic[T]):
     def __repr__(self) -> str:
         return f"<ConfigList wrapping {self._data}>"
 class JsonConfigManager:
-    def __init__(self, filename: str):
+    def __init__(self, filename: str = "./resources/config/config.json"):
         self._lock = threading.RLock()
         self.filename = self._resolve_config_path(filename)
         self.data: dict = {}
