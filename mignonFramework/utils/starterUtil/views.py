@@ -1,6 +1,6 @@
 # mignonFramework/utils/starterUtil/views.py
 from flask import Blueprint, render_template, request, jsonify, make_response, send_from_directory
-from mignonFramework.utils.Curl2Reuqest import CurlToRequestsConverter
+from mignonFramework.utils.Curl2Request import CurlToRequestsConverter
 from .code_generator import generate_scraper_code_and_configs
 import json
 import io

@@ -1,3 +1,4 @@
+# mignonFramework/utils/Curl2Request.py
 import os
 import shlex
 import re
@@ -177,9 +178,17 @@ class CurlToRequestsConverter:
                 data['verify'] = False
             elif arg in ('--max-time', '-m'):
                 if i + 1 < len(command_list):
-                    data['timeout'] = int(command_list[i+1])
+                    try:
+                        data['timeout'] = int(command_list[i+1])
+                    except ValueError:
+                        print(f"警告: 无效的超时值 '{command_list[i+1]}'. 将被忽略。")
                     i += 1
             i += 1
+
+        # --- 新增修改 ---
+        # 如果用户没有通过 -m 或 --max-time 提供超时时间，则设置默认超时为 2 秒
+        if data['timeout'] is None:
+            data['timeout'] = 2
 
         if data['url'] is None:
             raise ValueError("在 cURL 命令中未找到有效的 URL。")
@@ -194,7 +203,7 @@ class CurlToRequestsConverter:
 
         exec_globals = {
             'requests': requests,
-            'json': json # 确保 json 在 exec 环境中可用
+            'json': json
         }
 
         response_obj = None
@@ -205,9 +214,6 @@ class CurlToRequestsConverter:
                 exec(generated_code, exec_globals)
 
             response_obj = exec_globals.get('response')
-            if not response_obj:
-                raise ValueError("执行后的代码中未找到'response'变量。")
-
             response_text = response_obj.text
             status_code = str(response_obj.status_code)
 
@@ -227,9 +233,12 @@ class CurlToRequestsConverter:
 
             return generated_code, response_text, is_json, status_code
 
+        except requests.exceptions.Timeout:
+            error_message = f"--- 代码执行失败 ---\n请求超时 (超过 {self._parsed_data.get('timeout')} 秒)"
+            return generated_code, error_message, False, "Timeout Error"
         except Exception as e:
             error_message = f"--- 代码执行失败 ---\n{e}\n\n--- 捕获的输出 ---\n{captured_stdout.getvalue()}"
-            return generated_code, error_message, False, "Error"
+            return generated_code, error_message, False, "Execution Error"
 
     def _generate_python_code(self) -> str:
         """根据解析后的数据生成 Python requests 代码字符串。"""

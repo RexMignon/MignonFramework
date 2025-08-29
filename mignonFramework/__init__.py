@@ -16,7 +16,7 @@ from mignonFramework.utils.Logger import Logger
 from mignonFramework.utils.CountLinesInFolder import count_lines_in_single_file as countSingleFileLines, count_lines_in_files as countFolderFileLines, count_lines_in_directory as countDirectoryFileLines
 from mignonFramework.utils.Deduplicate import deduplicate_file as deduplicateFile, read_and_write_lines as readLines2otherFiles, replace_line_with_file_content as replaceLineByFile, copy_line_by_number as copyLineByNumber
 from mignonFramework.utils.PortForwarding import start_services as portForwordRun
-from mignonFramework.utils.Curl2Reuqest import CurlToRequestsConverter as Curl2Reuqest
+from mignonFramework.utils.Curl2Request import CurlToRequestsConverter as Curl2Request
 from mignonFramework.utils.GenericProcessor import GenericFileProcessor as InsertQuick, Rename
 from mignonFramework.utils.ProcessFile import run as processRun
 from mignonFramework.utils.MySQLManager import MysqlManager
@@ -28,6 +28,8 @@ from mignonFramework.utils.SqlDDL2List import extract_column_names_from_ddl as e
 from mignonFramework.utils.getJSONequals import jsonContrast
 from mignonFramework.utils.MicroserviceByNodeJS import MicroServiceByNodeJS
 from mignonFramework.utils.JsonlConfigReader import JsonConfigManager, injectJson
+from mignonFramework.utils.printDirectoryTree import print_directory_tree as printDirectoryTree
+from mignonFramework.utils.dataBaseTransfer import DatabaseTransferRunner, AbstractDatabaseTransfer, TransferConfig
 mignonFrameworkPrint = """                                                         
    __     __)                  
   (, /|  /|   ,                

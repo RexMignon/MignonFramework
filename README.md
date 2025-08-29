@@ -586,17 +586,17 @@ jsonContrast(test2,test1)
   start()
   ```
 
-### Curl2Reuqest 模块
+### Curl2Request 模块
 
 - **简单介绍**: 一个实用的开发者工具，能将从浏览器开发者工具复制的cURL命令字符串自动转换为等效的、格式化好的Python `requests`代码。
 
 - **使用方法**:
 
   ```
-  from mignonFramework import Curl2Reuqest
+  from mignonFramework import Curl2Request
   
   curl_command = 'curl "http://example.com" -H "User-Agent: my-agent"'
-  converter = Curl2Reuqest(curl_command)
+  converter = Curl2Request(curl_command)
   python_code = converter.get_requests_code()
   print(python_code)
   ```
@@ -671,3 +671,177 @@ jsonContrast(test2,test1)
   total_lines = countDirectoryFileLines('.', file_regex=r'.*\.py$')
   print(f"项目总行数: {total_lines}")
   ```
+    DatabaseTransfer 模块
+    简单介绍
+    DatabaseTransfer 是一个为解决复杂数据迁移需求而设计的高性能、可插拔的数据库迁移引擎。它内置了**“游标分页”和断点续传机制，能够高效、稳定地处理海量数据。其最大的亮点是集成了 Eazy Mode，通过可视化的 Web 界面，将繁琐的配置过程简化为几次点击，真正实现“一键迁移”**。
+    
+    原理
+    DatabaseTransfer 的设计哲学是**“配置优于编码，抽象优于实现”**。
+    
+    可插拔的迁移核心 (AOP): 框架通过 AbstractDatabaseTransfer 抽象基类定义了迁移的完整生命周期（连接、获取表、复制结构、传输数据）。所有具体的迁移任务（如 MySQLToMySQLTransfer）都是这个抽象的实现。这使得框架的核心逻辑与具体数据库解耦，未来可以轻松扩展支持 PostgreSQL、Oracle 等，实现了真正的“可插拔”。
+    
+    配置驱动与状态持久化: 整个迁移过程由一个 dataBaseTransfer.json 文件精确控制。这个文件不仅定义了源和目标的连接信息，还实时记录了迁移进度（如 alreadyFinished, nowTitle, nowLastId）。这种设计使得迁移任务可以随时中断和恢复，保证了长时间任务的稳定性。
+    
+    高效的游标分页: 针对大数据表，它摒弃了低效的 OFFSET 分页，采用 WHERE id > last_id ORDER BY id LIMIT batch_size 的方式进行批处理。这极大地提升了查询效率，并且是实现断点续传的关键。
+    
+    健壮的错误恢复机制: 当批量写入 (upsert_batch) 遇到脏数据而失败时，系统不会直接崩溃。它会自动降级为逐行恢复模式，精确定位到出错的数据行，并提供交互式选项（跳过、中止）或根据配置自动跳过，最大程度地保障了迁移任务的顺利完成。
+    
+    Eazy Mode (Web UI): 模块内置了一个轻量级的 Flask Web 应用。它为用户提供了一个直观的图形界面，用于测试数据库连接、获取和选择数据表、配置过滤规则，并最终自动生成格式正确的 dataBaseTransfer.json 配置文件。这极大地降低了使用门槛。
+
+使用方法
+1. Eazy Mode (强烈推荐)
+   这是最简单、最快捷的方式。你只需要一个启动脚本。
+```python
+# run_transfer_ui.py
+from mignonFramework.utils.dataBaseTransfer import DatabaseTransferRunner
+
+# 以 Eazy Mode 启动，这将开启一个本地 Web 服务器
+# 它会自动寻找或创建 ./resources/config/dataBaseTransfer.json
+runner = DatabaseTransferRunner(eazy=True)
+runner.run()
+
+# 运行后，访问 http://127.0.0.1:5001 即可开始可视化配置
+```
+
+2. 标准模式 (配置完成后)
+   当你通过 Eazy Mode 生成了 dataBaseTransfer.json 文件后，就可以使用标准模式来执行迁移任务。
+```python
+# run_migration.py
+from mignonFramework.utils.dataBaseTransfer import DatabaseTransferRunner, MySQLToMySQLTransfer
+
+# 以标准模式启动
+runner = DatabaseTransferRunner(eazy=False)
+
+# 加载配置并开始迁移
+# 你也可以在这里替换成其他迁移实现类
+runner.run(transfer_class=MySQLToMySQLTransfer)
+```
+
+参数
+DatabaseTransferRunner(config_path: str = None, eazy: bool = False)
+
+config_path (str, 可选): 迁移配置文件的路径。默认为 './resources/config/dataBaseTransfer.json'。
+
+eazy (bool, 可选): 是否启动 Eazy Mode 可视化配置界面。默认为 False。
+
+runner.run(transfer_class: Type[AbstractDatabaseTransfer] = MySQLToMySQLTransfer)
+
+transfer_class (可选): 指定用于迁移的实现类。默认为 MySQLToMySQLTransfer。
+
+JsonConfigManager 模块
+简单介绍
+JsonConfigManager 是一个将响应式编程和依赖注入思想融入JSON配置管理的强大工具。它通过一个巧妙的代理层，让你能够以操作普通 Python 对象属性的方式来读写 JSON 文件，并且任何修改都会自动、原子性地、线程安全地写回磁盘。它彻底告别了繁琐的 json.load() 和 json.dump()。
+
+原理
+JsonConfigManager 的核心是**“配置即对象，操作即保存”**。
+
+动态代理 (_ConfigObject & _ConfigList): 当你调用 manager.getInstance() 时，得到的不是一个普通的字典，而是一个_ConfigObject代理对象。这个代理对象封装了真实的配置数据。
+
+属性访问拦截: 代理对象通过重写 __getattr__ 和 __setattr__ Python魔法方法，拦截了所有的属性访问。
+
+当你读取属性 (config.db.host)，__getattr__ 会在内部的字典中查找对应的值。如果值是字典或列表，它会递归地将其也包装成代理对象。
+
+当你写入属性 (config.db.port = 3307)，__setattr__ 不仅会更新内部字典，还会立即调用一个回调函数，这个回调函数就是 manager._save 方法。
+
+自动持久化: 正是因为 __setattr__ 和列表修改方法（如 append）都绑定了保存回调，所以你对配置对象的任何改动都会被立刻、自动地持久化到 .json 文件中。
+
+线程安全: 所有的文件读写操作都被 threading.RLock 保护，确保了在多线程环境下配置文件的完整性和一致性。
+
+依赖注入 (@injectJson): 模块提供了一个装饰器工厂，可以像 Spring 框架一样，将一个 JsonConfigManager 实例“注入”到一个配置类定义中，使其在被“实例化”时自动返回配置代理对象，进一步简化了代码。
+
+使用方法
+1. 定义配置模板并获取实例
+```python
+# my_config.py
+from mignonFramework.utils.JsonlConfigReader import JsonConfigManager
+
+# (推荐) 定义一个与JSON结构对应的类，以获得更好的IDE提示和代码可读性
+class AppConfig:
+    host: str
+    port: int
+    users: list
+
+# 1. 创建一个 manager 实例，指向你的配置文件
+config_manager = JsonConfigManager(filename='./resources/config/app_settings.json')
+
+# 2. 获取配置的实时代理对象
+# 如果文件不存在，会自动创建一个空的 "{}"
+app_cfg = config_manager.getInstance(AppConfig)
+
+```
+2. 在项目中使用配置
+   现在，你可以像操作普通对象一样操作 app_cfg，所有变更都会自动保存。
+
+```python
+# main.py
+from my_config import app_cfg
+
+# 像访问对象属性一样读取配置
+print(f"Server is running on {app_cfg.host}:{app_cfg.port}")
+
+# 修改配置，这一步会自动将更改写入 app_settings.json 文件
+app_cfg.port = 8080
+print("Port has been updated.")
+
+# 即使是列表操作，也会被自动保存
+app_cfg.users.append("new_user")
+print("New user added.")
+
+```
+参数
+JsonConfigManager(filename: str = "./resources/config/config.json")
+
+filename (str, 可选): JSON 配置文件的路径。如果路径或文件不存在，将会被自动创建。
+
+injectJson(manager: JsonConfigManager)
+
+manager (JsonConfigManager): 一个 JsonConfigManager 的实例，用于装饰器注入。
+
+PrintDirectoryTree 模块
+简单介绍
+PrintDirectoryTree 是一个简洁而实用的开发辅助工具，用于在控制台中以美观的树状结构递归地打印出指定目录的内容。对于需要快速可视化项目结构、或为文档生成目录列表的场景，这是一个非常方便的小工具。
+
+原理
+它的实现优雅地利用了递归和迭代状态判断。
+
+递归遍历: 核心函数 print_directory_tree 会检查路径下的每一个项目。如果项目是文件夹，它就会以更新后的缩进级别再次调用自身，从而实现深度遍历。
+
+前缀智能判断: 为了生成 ├── 和 └── 这样清晰的树状连接线，函数在遍历一个目录之前，会先获取该目录下所有条目的列表。在循环内部，通过 enumerate 判断当前处理的条目是否是列表中的最后一项。
+
+如果是最后一项，就使用 └── 作为前缀。
+
+如果不是，就使用 ├── 作为前缀。
+这个简单的“向前看”逻辑，是生成美观树状结构的关键。
+
+使用方法
+使用方法极其简单，只需导入并调用函数即可。
+```python
+
+from mignonFramework.utils.printDirectoryTree import print_directory_tree
+
+# 定义你想要打印的目录路径
+target_path = './MignonFramework'
+
+# 调用函数
+print(f"项目 '{target_path}' 的目录结构如下:")
+print_directory_tree(target_path)
+
+```
+输出示例:
+
+项目 './MignonFramework' 的目录结构如下:
+├── resources
+│   └── config
+│       └── dataBaseTransfer.json
+├── utils
+│   ├── dataBaseTransfer.py
+│   ├── JsonlConfigReader.py
+│   └── printDirectoryTree.py
+└── README.md
+
+参数
+print_directory_tree(path, indent=0)
+
+path (str): 要遍历并打印的起始目录路径。
+
+indent (int, 可选): 内部用于递归的缩进级别。通常用户无需手动设置此参数。
