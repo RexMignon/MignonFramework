@@ -64,7 +64,6 @@ Because it is directly implemented via DDL Since the table is copied, there's no
 This module focuses on migration, not on intervening in transfers. It only handles complete table migrations.
 """
 
-# MignonFramework/utils/dataBaseTransfer.py
 import sys
 import time
 import os
@@ -72,17 +71,24 @@ import json
 from abc import ABC, abstractmethod
 from typing import List, Optional, Type
 from datetime import date, datetime
+import functools
 
 # 导入框架内的其他模块
-from mignonFramework.utils.JsonlConfigReader import JsonConfigManager
-from mignonFramework.utils.MySQLManager import MysqlManager
+# 假设这些模块在你的项目环境中是可用的
+try:
+    from mignonFramework.utils.JsonlConfigReader import JsonConfigManager
+    from mignonFramework.utils.MySQLManager import MysqlManager
+except ImportError:
+    print("[致命错误] 无法导入 mignonFramework 的模块。")
+    print("请确保 mignonFramework 已正确安装 (例如: pip install mignonFramework)")
+    print("或者项目结构正确，可以找到 utils.JsonlConfigReader 和 utils.MySQLManager。")
+    sys.exit(1)
 
-# --- Eazy Mode 依赖 ---
-# 将 Flask 作为可选依赖，仅在 Eazy Mode 下需要
+
 try:
     from flask import Flask, render_template_string, request, jsonify, send_from_directory
 except ImportError:
-    Flask = None # 如果未安装 Flask，则将其设置为 None
+    Flask = None
 
 # --- 1. 配置模型定义 ---
 # 定义与 JSON 结构严格对应的配置类
@@ -117,6 +123,8 @@ class AbstractDatabaseTransfer(ABC):
         self.config = config
         self.source_db = None
         self.target_db = None
+        # 初始化一个缓存，用于存储已查询过的表的生成列信息
+        self._generated_columns_cache = {}
         print(f"正在初始化迁移配置, 源数据库: {config.needToTransferredDataBase}")
 
     @abstractmethod
@@ -239,7 +247,7 @@ class MySQLToMySQLTransfer(AbstractDatabaseTransfer):
         if self.source_db:
             (self.source_db.close_pool if hasattr(self.source_db, 'pool') else self.source_db.close)()
         if self.target_db:
-            (self.target_db.close_pool if hasattr(self.source_db, 'pool') else self.target_db.close)()
+            (self.target_db.close_pool if hasattr(self.target_db, 'pool') else self.target_db.close)()
 
     def get_all_tables(self) -> List[str]:
         print("正在从源 MySQL 数据库获取所有表名...")
@@ -295,9 +303,48 @@ class MySQLToMySQLTransfer(AbstractDatabaseTransfer):
                 row_data[key] = None
         return row_data
 
+    def _get_generated_columns(self, db_manager: MysqlManager, db_name: str, table_name: str) -> list:
+        """
+        查询数据库元数据，获取指定表的所有生成列 (Generated Columns)。
+        使用缓存避免对同一个表重复执行查询。
+        """
+        cache_key = f"{db_name}.{table_name}"
+        if cache_key in self._generated_columns_cache:
+            return self._generated_columns_cache[cache_key]
+
+        query = """
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = %s
+                  AND TABLE_NAME = %s
+                  AND EXTRA LIKE '%%GENERATED%%' \
+                """
+        params = (db_name, table_name)
+
+        try:
+            results = None
+            if hasattr(db_manager, 'pool'):
+                results = db_manager.fetch_all(query, params)
+            else:
+                with db_manager.connection.cursor() as cursor:
+                    cursor.execute(query, params)
+                    results = cursor.fetchall()
+
+            generated_cols = [list(row.values())[0] for row in results]
+            self._generated_columns_cache[cache_key] = generated_cols
+            return generated_cols
+        except Exception as e:
+            print(f"\n[警告] 无法获取表 '{table_name}' 的生成列信息。错误: {e}")
+            return []
+
     def transfer_table_data(self, table_name: str):
         self.config.nowTitle = table_name
-        max_id = self.get_max_id(table_name)
+        try:
+            max_id = int(self.get_max_id(table_name) or 0)
+        except (TypeError, ValueError) as e:
+            print(f"\n[致命错误] 获取表 '{table_name}' 的最大ID失败。错误: {e}")
+            print("  - 确保该表有可转换为整数的 'id' 列，且数据类型正确。")
+            raise e
 
         if max_id == 0:
             print(f"  - 表 '{table_name}' 为空或没有 'id' 列，跳过数据迁移。")
@@ -305,25 +352,27 @@ class MySQLToMySQLTransfer(AbstractDatabaseTransfer):
 
         print(f"  - 表 '{table_name}' 最大ID为: {max_id}。开始数据迁移...")
 
-        if self.config.nowLastId > 0:
-            print(f"  - 从上次断点恢复, last ID: {self.config.nowLastId}")
-        else:
-            self.config.nowLastId = 0
+        last_id = self.config.nowLastId
+        if last_id > 0:
+            print(f"  - 从上次断点恢复, last ID: {last_id}")
 
-        while True:
+        generated_columns = self._get_generated_columns(self.target_db, self.config.targetDataBase, table_name)
+        if generated_columns:
+            print(f"  [信息] 表 '{table_name}' 包含以下生成列，将从插入数据中自动排除: {', '.join(generated_columns)}")
+
+        while last_id < max_id:
+            query = f"SELECT * FROM `{table_name}` WHERE id > %s ORDER BY id ASC LIMIT %s;"
+            params = (last_id, self.config.batchSize)
+
             data_batch = None
             if hasattr(self.source_db, 'pool'):
-                query = f"SELECT * FROM `{table_name}` WHERE id > %s ORDER BY id ASC LIMIT %s;"
-                params = (self.config.nowLastId, self.config.batchSize)
                 data_batch = self.source_db.fetch_all(query, params)
             else:
-                query = f"SELECT * FROM `{table_name}` WHERE id > {self.config.nowLastId} ORDER BY id ASC LIMIT {self.config.batchSize};"
                 with self.source_db.connection.cursor() as cursor:
-                    cursor.execute(query)
+                    cursor.execute(query, params)
                     data_batch = cursor.fetchall()
 
             if not data_batch:
-                # 确保进度条达到100%
                 bar = '█' * 40
                 sys.stdout.write(f'\r|{bar}| 100.0% ({max_id}/{max_id})  本批: [0]')
                 sys.stdout.flush()
@@ -331,18 +380,30 @@ class MySQLToMySQLTransfer(AbstractDatabaseTransfer):
 
             cleaned_data_batch = [self._clean_zero_dates(row) for row in data_batch]
 
+            final_data_batch = []
+            if generated_columns:
+                for row in cleaned_data_batch:
+                    row_copy = row.copy()
+                    for col in generated_columns:
+                        if col in row_copy:
+                            del row_copy[col]
+                    final_data_batch.append(row_copy)
+            else:
+                final_data_batch = cleaned_data_batch
+
             try:
-                self.target_db.upsert_batch(data_list=cleaned_data_batch, table_name=table_name)
+                self.target_db.upsert_batch(data_list=final_data_batch, table_name=table_name)
             except Exception as batch_exception:
                 print(f"\n[警告] 批量写入失败 (表: {table_name})。错误: {batch_exception}")
                 print("--- 即将进入逐行恢复模式 ---")
 
-                for i, row_data in enumerate(cleaned_data_batch):
+                for row_data in final_data_batch:
                     try:
                         self.target_db.upsert_single(row_data, table_name)
                     except Exception as single_exception:
+                        row_id = row_data.get('id', 'N/A')
                         print("\n" + "=" * 80)
-                        print(f"[错误] 定位到错误行!\n  - 表名: {table_name}\n  - ID: {row_data.get('id', 'N/A')}\n  - 错误: {single_exception}\n  - 数据: {row_data}")
+                        print(f"[错误] 定位到错误行!\n  - 表名: {table_name}\n  - ID: {row_id}\n  - 错误: {single_exception}\n  - 数据: {row_data}")
                         print("=" * 80)
 
                         if self.config.autoSkipError:
@@ -362,11 +423,12 @@ class MySQLToMySQLTransfer(AbstractDatabaseTransfer):
                 print("--- 逐行恢复模式结束 ---")
 
             last_id_in_batch = data_batch[-1]['id']
-            self.config.nowLastId = last_id_in_batch
+            last_id = last_id_in_batch
+            self.config.nowLastId = last_id
 
-            percentage = min(1.0, last_id_in_batch / max_id)
+            percentage = min(1.0, last_id / max_id)
             bar = '█' * int(40 * percentage) + '-' * (40 - int(40 * percentage))
-            sys.stdout.write(f'\r|{bar}| {percentage:.1%} ({last_id_in_batch}/{max_id})  本批: [{len(data_batch)}]')
+            sys.stdout.write(f'\r|{bar}| {percentage:.1%} ({last_id}/{max_id})  本批: [{len(data_batch)}]')
             sys.stdout.flush()
 
 
@@ -407,6 +469,7 @@ class TransferEazyAppRunner:
             .table-item { display: flex; align-items: center; padding: 0.5rem; border-radius: 3px; }
             .table-item:hover { background: #f0f2f5; }
             .table-item input { margin-right: 0.75rem; }
+            .table-item .warning { color: var(--danger); margin-left: auto; font-size: 0.8rem; font-weight: 500; cursor: help; user-select: none;}
             .actions { margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 1rem; }
             .final-action { text-align: center; }
             .hidden { display: none; }
@@ -441,7 +504,7 @@ class TransferEazyAppRunner:
             <div class="card-body">
                 <button id="fetch-tables-btn" class="btn btn-primary" disabled>首先，请获取表列表</button>
                 <div id="table-config-wrapper" class="hidden" style="margin-top:1.5rem;">
-                    <div class="form-group"><label>过滤模式</label><select id="filter-mode" class="form-control" style="max-width: 200px;"><option value="exclude">排除模式 (Exclude)</option><option value="include">包含模式 (Include)</option></select></div>
+                    <div class="form-group"><label>过滤模式</label><select id="filter-mode" class="form-control" style="max-width: 200px;"><option value="include" selected>包含模式 (Include)</option><option value="exclude">排除模式 (Exclude)</option></select></div>
                     <div id="table-list-wrapper"></div>
                 </div>
             </div>
@@ -477,6 +540,9 @@ class TransferEazyAppRunner:
                 document.getElementById('targetPass').value = config.targetPassword || '';
                 document.getElementById('targetDb').value = config.targetDataBase || '';
                 document.getElementById('autoSkipError').checked = config.autoSkipError === true;
+                 if (config.isInclude === false) {
+                    document.getElementById('filter-mode').value = 'exclude';
+                }
             };
             populateForm(initialConfig);
 
@@ -521,15 +587,35 @@ class TransferEazyAppRunner:
             document.getElementById('test-target-btn').addEventListener('click', () => testConnection('target'));
 
             fetchTablesBtn.addEventListener('click', async () => {
+                fetchTablesBtn.disabled = true;
+                fetchTablesBtn.classList.add('is-loading');
                 const host = document.getElementById('sourceHost').value, port = document.getElementById('sourcePort').value, user = document.getElementById('sourceUser').value, pass = document.getElementById('sourcePass').value, db = document.getElementById('sourceDb').value;
                 const response = await fetch('/get_tables', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ host, port, user, pass, db }) });
                 const result = await response.json();
                 const listWrapper = document.getElementById('table-list-wrapper');
+
+                fetchTablesBtn.classList.remove('is-loading');
+                fetchTablesBtn.disabled = false;
+
                 if (result.success) {
-                    listWrapper.innerHTML = result.tables.map(table => `<div class="table-item"><input type="checkbox" id="table_${table}" value="${table}" checked><label for="table_${table}">${table}</label></div>`).join('');
+                    listWrapper.innerHTML = result.tables.map(table => {
+                        const isChecked = table.isValid ? 'checked' : '';
+                        const warningHTML = !table.isValid 
+                            ? `<span class="warning" title="${table.reason}">⚠️ id 不兼容</span>` 
+                            : '';
+                        
+                        return `
+                            <div class="table-item">
+                                <input type="checkbox" id="table_${table.name}" value="${table.name}" ${isChecked}>
+                                <label for="table_${table.name}">${table.name}</label>
+                                ${warningHTML}
+                            </div>`;
+                    }).join('');
                     document.getElementById('table-config-wrapper').classList.remove('hidden');
                     generateBtn.disabled = false;
-                } else { alert('获取表列表失败: ' + result.error); }
+                } else { 
+                    alert('获取表列表失败: ' + result.error); 
+                }
             });
 
             generateBtn.addEventListener('click', async () => {
@@ -595,12 +681,9 @@ class TransferEazyAppRunner:
                     host=data['host'], user=data['user'], password=data['pass'],
                     database=data['db'], port=int(data['port'])
                 )
-                if db_manager.is_connected():
-                    with db_manager.connection.cursor() as cursor:
-                        cursor.execute("SELECT 1")
-                    return jsonify({'success': True, 'message': '连接成功!'})
-                else:
-                    return jsonify({'success': False, 'message': '连接失败: 请检查配置'})
+                with db_manager.connection.cursor() as cursor:
+                    cursor.execute("SELECT 1")
+                return jsonify({'success': True, 'message': '连接成功!'})
             except Exception as e:
                 return jsonify({'success': False, 'message': f'连接失败: {e}'})
             finally:
@@ -609,9 +692,10 @@ class TransferEazyAppRunner:
 
         @self.app.route('/favicon.ico')
         def favicon():
-            static_folder = os.path.join(self.current_dir, 'starterUtil', "static/ico")
-            return send_from_directory(static_folder, 'favicon.ico')
-
+            # 这是一个兜底路由，防止找不到图标时产生404日志
+            # 你可以将一个真实的ico文件放在指定目录
+            static_folder = os.path.join(self.current_dir, 'static')
+            return send_from_directory(static_folder, 'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
         @self.app.route('/get_tables', methods=['POST'])
         def get_tables():
@@ -622,13 +706,42 @@ class TransferEazyAppRunner:
                     host=data['host'], user=data['user'], password=data['pass'],
                     database=data['db'], port=int(data['port'])
                 )
-                if not db_manager.is_connected():
-                    return jsonify({'success': False, 'error': '无法连接到数据库'})
                 with db_manager.connection.cursor() as cursor:
                     cursor.execute("SHOW TABLES;")
                     tables_dicts = cursor.fetchall()
-                tables = [list(row.values())[0] for row in tables_dicts]
-                return jsonify({'success': True, 'tables': tables})
+                    table_names = [list(row.values())[0] for row in tables_dicts]
+
+                    validated_tables = []
+                    integer_types = ['int', 'bigint', 'mediumint', 'smallint', 'tinyint']
+
+                    for table_name in table_names:
+                        validation_result = {
+                            "name": table_name,
+                            "isValid": False,
+                            "reason": "未找到名为 'id' 的列。"
+                        }
+
+                        query = """
+                                SELECT DATA_TYPE
+                                FROM INFORMATION_SCHEMA.COLUMNS
+                                WHERE TABLE_SCHEMA = %s
+                                  AND TABLE_NAME = %s
+                                  AND COLUMN_NAME = 'id' \
+                                """
+                        cursor.execute(query, (data['db'], table_name))
+                        column_info = cursor.fetchone()
+
+                        if column_info:
+                            data_type = column_info.get('DATA_TYPE', '').lower()
+                            if data_type in integer_types:
+                                validation_result["isValid"] = True
+                                validation_result["reason"] = ""
+                            else:
+                                validation_result["reason"] = f"'id' 列不是整数类型 (当前: {data_type})。"
+
+                        validated_tables.append(validation_result)
+
+                return jsonify({'success': True, 'tables': validated_tables})
             except Exception as e:
                 return jsonify({'success': False, 'error': str(e)})
             finally:
@@ -687,7 +800,7 @@ class DatabaseTransferRunner:
                 "host": "localhost", "port": 3306, "targetDataBase": "target_db_name",
                 "targetUserName": "root", "targetPassword": "password", "targetHost": "localhost",
                 "targetPort": 3306, "excludeList": ["some_log_table"], "alreadyFinished": [],
-                "nowTitle": "", "nowLastId": 0, "isInclude": False, "includeList": ["users"],
+                "nowTitle": "", "nowLastId": 0, "isInclude": True, "includeList": [],
                 "batchSize": 1000, "autoSkipError": False
             }
             temp_manager = JsonConfigManager(self.config_path)
@@ -702,6 +815,9 @@ class DatabaseTransferRunner:
         如果 eazy=True，则启动 Eazy Mode Web UI。
         """
         if self.eazy:
+            if not Flask:
+                print("[错误] Eazy Mode 需要 Flask。请运行 'pip install Flask'。")
+                return
             try:
                 eazy_runner = TransferEazyAppRunner(config_path=self.config_path)
                 eazy_runner.run()
@@ -718,7 +834,7 @@ class DatabaseTransferRunner:
         config_proxy = self.config_manager.getInstance(TransferConfig)
 
         if config_proxy.needToTransferredDataBase == "source_db_name":
-            print(f"请更新 '{self.config_path}' 中的数据库信息，或使用 Eazy Mode 生成配置。")
+            print(f"请更新 '{self.config_path}' 中的数据库信息，或使用 '--eazy' 标志启动 Eazy Mode 生成配置。")
             return
 
         print(f"配置已加载。正在使用 '{transfer_class.__name__}' 开始迁移...")
@@ -728,13 +844,11 @@ class DatabaseTransferRunner:
 
 # --- 6. 主程序入口 ---
 if __name__ == '__main__':
-    # --- 启动 Eazy Mode 来生成配置 (默认行为) ---
-    print("正在以 Eazy Mode 启动以生成配置...")
-    eazy_mode_runner = DatabaseTransferRunner(eazy=True)
-    eazy_mode_runner.run()
+    # 检查命令行参数来决定运行哪个模式
+    # - 运行 `python main.py`       -> 启动标准迁移
+    # - 运行 `python main.py --eazy` -> 启动 Eazy Mode Web UI
+    is_eazy_mode = '--eazy' in sys.argv
 
-    # --- 启动标准迁移 (配置完成后使用) ---
-    # print("\n正在启动标准迁移程序...")
-    # runner = DatabaseTransferRunner(eazy=False)
-    # runner.run()
+    runner = DatabaseTransferRunner(eazy=is_eazy_mode)
+    runner.run()
 

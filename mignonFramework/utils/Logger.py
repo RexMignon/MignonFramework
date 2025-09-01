@@ -26,9 +26,25 @@ class _AutoLoggerStream:
         self._original_stdout = sys.__stdout__
         self._lock = threading.RLock()
 
-    def write(self, text: str):
-        """当任何代码调用 print() 或 sys.stdout.write() 时，此方法会被自动调用。"""
-        # 修改点：检查全局的、线程安全的日志激活状态
+    def write(self, text):
+        """
+        当任何代码调用 print() 或 sys.stdout.write() 时，此方法会被自动调用。
+        增加了对 bytes 类型的兼容处理。
+        """
+        if isinstance(text, bytes):
+            # 使用 'utf-8' 解码，并忽略无法解码的字节，以增加健壮性
+            try:
+                text = text.decode('utf-8', errors='ignore')
+            except Exception:
+                # 如果解码失败，则尝试使用系统默认编码
+                try:
+                    text = text.decode(sys.getdefaultencoding(), errors='ignore')
+                except Exception:
+                    # 如果仍然失败，则直接输出原始字节表示形式，避免崩溃
+                    self._original_stdout.write(f"[Logger Codec Error] Could not decode bytes: {text!r}\n")
+                    return
+
+        # 检查全局的、线程安全的日志激活状态
         if not self._logger.is_active:
             self._original_stdout.write(text)
             return
@@ -58,8 +74,7 @@ class _AutoLoggerStream:
                     self._original_stdout.write(text)
                     return
 
-                # 这里直接调用 write_log 可能会导致因 \n 而产生的额外换行
-                # 我们直接构建消息并写入，以获得更精确的控制
+                # 直接构建消息并写入，以获得更精确的控制
                 timestamp = self._logger.get_timestamp()
                 level = "INFO"
                 level_color = self._logger.color_map.get(level, '')
@@ -112,10 +127,9 @@ class Logger:
             "EXIST": _Colors.MAGENTA # 新增 EXIST 级别颜色
         }
 
-        # --- 修改核心 ---
-        # 1. 使用普通的实例变量存储状态
+        # 使用普通的实例变量存储状态
         self._patch_is_active = enabld
-        # 2. 创建一个专用的锁来保护这个状态
+        # 创建一个专用的锁来保护这个状态
         self._patch_state_lock = threading.RLock()
 
         if enabld:
@@ -124,7 +138,7 @@ class Logger:
             sys.stdout = _AutoLoggerStream(self)
             self.write_log("SYSTEM", "Auto-logging enabled. Standard output is now being logged.")
 
-    # 3. 创建线程安全的属性来访问和修改状态
+    # 创建线程安全的属性来访问和修改状态
     @property
     def is_active(self):
         with self._patch_state_lock:
@@ -237,4 +251,3 @@ class Logger:
                 self.write_log("ERROR", error_msg)
                 raise
         return wrapper
-
