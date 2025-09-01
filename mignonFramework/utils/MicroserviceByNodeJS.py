@@ -46,7 +46,7 @@ class MicroServiceByNodeJS:
 
     def _verify_service(self):
         try:
-            response = requests.get(f'{self.url_base}/status', timeout=2)
+            response = requests.get(f'{self.url_base}/status', timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 return data.get('service_name') == 'js_invoker_microservice'
@@ -87,21 +87,20 @@ class MicroServiceByNodeJS:
         return False
 
     def _start_server(self, invoker_path, scan_dir):
+        if self.client_only:
+            if not self._verify_service():
+                raise ConnectionError(f"在 client_only 模式下，无法连接到{self.url_base} 上的服务。")
+            return
+
         if self._is_port_in_use():
             if self._verify_service():
                 if self.client_only:
                     return
             else:
-                if self.client_only:
-                    raise ConnectionError(f"在 client_only 模式下，端口 {self.port} 被占用且无法连接到我们的服务。")
-                else:
-                    self._find_and_kill_process_on_port(self.port)
-                    time.sleep(1)
+                self._find_and_kill_process_on_port(self.port)
+                time.sleep(1)
 
-        if self.client_only:
-            if not self._is_port_in_use() or not self._verify_service():
-                raise ConnectionError(f"在 client_only 模式下，无法连接到{self.url_base} 上的服务。")
-            return
+
 
         if not os.path.exists(invoker_path):
             raise FileNotFoundError(f"Invoker file not found: {invoker_path}")
