@@ -73,8 +73,6 @@ from typing import List, Optional, Type
 from datetime import date, datetime
 import functools
 
-# 导入框架内的其他模块
-# 假设这些模块在你的项目环境中是可用的
 try:
     from mignonFramework.utils.JsonlConfigReader import JsonConfigManager
     from mignonFramework.utils.MySQLManager import MysqlManager
@@ -90,8 +88,6 @@ try:
 except ImportError:
     Flask = None
 
-# --- 1. 配置模型定义 ---
-# 定义与 JSON 结构严格对应的配置类
 class TransferConfig:
     needToTransferredDataBase: str
     userName: str
@@ -109,8 +105,8 @@ class TransferConfig:
     nowLastId: int
     isInclude: bool
     includeList: List[str]
-    batchSize: int = 1000  # 默认的批量大小
-    autoSkipError: bool = False # 新增：是否自动跳过错误行
+    batchSize: int = 1000
+    autoSkipError: bool = False
 
 # --- 2. 抽象的数据库迁移基类 ---
 class AbstractDatabaseTransfer(ABC):
@@ -224,7 +220,6 @@ class AbstractDatabaseTransfer(ABC):
             self.close_dbs()
 
 
-# --- 3. 针对 MySQL 的具体迁移实现 ---
 class MySQLToMySQLTransfer(AbstractDatabaseTransfer):
     """
     针对 MySQL -> MySQL 迁移的具体实现。
@@ -842,11 +837,7 @@ class DatabaseTransferRunner:
         transfer_instance.run()
 
 
-# --- 6. 主程序入口 ---
 if __name__ == '__main__':
-    # 检查命令行参数来决定运行哪个模式
-    # - 运行 `python main.py`       -> 启动标准迁移
-    # - 运行 `python main.py --eazy` -> 启动 Eazy Mode Web UI
     is_eazy_mode = '--eazy' in sys.argv
 
     runner = DatabaseTransferRunner(eazy=is_eazy_mode)
