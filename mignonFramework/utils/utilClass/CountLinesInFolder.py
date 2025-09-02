@@ -155,19 +155,19 @@ if __name__ == '__main__':
 
     # 1. 统计文件夹中所有文件的行数
     print("--- 统计所有文件 ---")
-    count_lines_in_files('../')
+    count_lines_in_files('../../')
 
     print("\n--- 统计单个文件 ---")
     count_lines_in_single_file('test.py')
 
     # 2. 统计文件夹中所有以 '.py' 结尾的文件行数
     print("\n--- 统计所有 .py 文件 ---")
-    count_lines_in_files('../', suffix='.py')
+    count_lines_in_files('../../', suffix='.py')
 
     # 3. 统计文件夹中所有以 'file' 开头的文件行数
     print("\n--- 统计所有以 'file' 开头的文件 ---")
-    count_lines_in_files('../', prefix='file')
+    count_lines_in_files('../../', prefix='file')
 
     # 4. 统计文件名中包含数字的文件行数 (使用正则表达式)
     print("\n--- 统计文件名中包含数字的文件 ---")
-    count_lines_in_files('../', pattern=r'\d')
+    count_lines_in_files('../../', pattern=r'\d')

@@ -1,11 +1,11 @@
 import json
 import re
 from datetime import datetime
-from flask import Flask, render_template_string, request, jsonify, url_for, render_template, send_from_directory
+from flask import Flask, render_template_string, request, jsonify, send_from_directory
 import os
 
 # 虚拟的DDL解析器作为备用
-from mignonFramework.utils.SqlDDL2List import extract_column_names_from_ddl
+from mignonFramework.utils.utilClass.SqlDDL2List import extract_column_names_from_ddl
 
 # 获取当前脚本的绝对路径
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -381,7 +381,8 @@ class EazyAppRunner:
                     if default_val:
                         default_values[source_key] = default_val
 
-                include_keys_str = f"include_keys = {json.dumps(sorted(list(set(include_keys))), indent=4)}"
+                include_keys_str = f"include_keys = {json.dumps(sorted(list(set(include_keys))), indent=4, ensure_ascii=False)}"
+
                 defaults_str_list = ["# 注意: 所有值都是字符串, 你可能需要手动修改类型", "default_values = {"]
                 for k, v in sorted(default_values.items()):
                     defaults_str_list.append(f"    '{k}': {repr(v)},")

@@ -1,18 +1,17 @@
 import json as std_json
 import os
-import ast
 import sys
 import io
 import re
-import random
 from contextlib import redirect_stdout
 from datetime import datetime
 from typing import Dict, Callable, List, Optional, Any, Set, Tuple
 
-from mignonFramework.utils.MySQLManager import MysqlManager
-from mignonFramework.utils.CountLinesInFolder import count_lines_in_single_file
-from mignonFramework.utils.ConfigReader import ConfigManager
-from mignonFramework.utils.BaseWriter import BaseWriter
+from mignonFramework.utils.writer.MySQLManager import MysqlManager
+from mignonFramework.utils.config.ConfigReader import ConfigManager
+from mignonFramework.utils.writer.BaseWriter import BaseWriter
+from mignonFramework.utils.reader.BaseReader import BaseReader
+from mignonFramework.utils.reader.JSONLineReader import JsonLineReader
 
 
 class CallbackException(Exception):
@@ -29,11 +28,13 @@ class Rename:
 
 class GenericFileProcessor:
     """
-    一个通用的、可定制的逐行JSON文件处理器，用于将文件内容批量写入指定目标。
+    一个通用的、可定制的逐行文件处理器，用于将文件内容批量写入指定目标。
     支持零配置启动、交互式的Eazy Mode和行级错误处理。
     """
 
     def __init__(self,
+                 path: str,
+                 reader: Optional[BaseReader] = None,
                  writer: Optional[BaseWriter] = None,
                  table_name: Optional[str] = None,
                  modifier_function: Optional[Callable[[Dict], Dict]] = None,
@@ -46,23 +47,31 @@ class GenericFileProcessor:
                  print_mapping_table: bool = True,
                  on_error: str = 'stop',
                  eazy: bool = False,
-                 auto_skip_error: bool = False):  # --- 新增功能参数 ---
+                 auto_skip_error: bool = False):
         self.is_ready = True
         self.config_manager = ConfigManager(filename='./resources/config/generic.ini', section='GenericProcessor')
-        self.path_from_config = None
         self.test = False
         self.eazy = eazy
+        if not reader:
+            reader = JsonLineReader(path)
+        self.reader = reader
         self.writer = writer
         self.table_name = table_name
+
         if not self.eazy:
-            if self.writer is None or self.table_name is None:
+            if self.reader is None or self.writer is None or self.table_name is None:
                 self._init_from_config()
             if not self.is_ready:
                 return
             if self.writer and not isinstance(self.writer, BaseWriter):
                 raise TypeError("writer 必须是 BaseWriter 的一个实例。")
+            if self.reader and not isinstance(self.reader, BaseReader):
+                raise TypeError("reader 必须是 BaseReader 的一个实例。")
         else:
+            if self.reader is None:
+                self._init_from_config()
             self.is_ready = True
+
         self.modifier_function = modifier_function
         self.filter_function = filter_function
         self.exclude_keys = set(exclude_keys) if exclude_keys else set()
@@ -72,10 +81,24 @@ class GenericFileProcessor:
         self.callBack = callBack
         self.print_mapping_table = print_mapping_table
         self.on_error = on_error
-        self.auto_skip_error = auto_skip_error  # --- 保存新参数的状态 ---
+        self.auto_skip_error = auto_skip_error
 
     def _init_from_config(self):
         config_data = self.config_manager.getAllConfig()
+        config_incomplete = False
+
+        if self.reader is None:
+            path_from_config = config_data.get('path')
+            if path_from_config and 'YOUR_' not in str(path_from_config):
+                try:
+                    self.reader = JsonLineReader(path=path_from_config)
+                except FileNotFoundError as e:
+                    print(f"[ERROR] 配置文件中的路径无效: {e}")
+                    self.is_ready = False
+                    config_incomplete = True
+            else:
+                config_incomplete = True
+
         if self.writer is None:
             db_keys = ['host', 'user', 'password', 'database', 'port']
             if config_data and all(config_data.get(k) and 'YOUR_' not in str(config_data.get(k)) for k in db_keys):
@@ -87,16 +110,18 @@ class GenericFileProcessor:
                     self.is_ready = False
                     return
             else:
-                self._guide_user_to_config()
-                return
+                config_incomplete = True
+
         if self.table_name is None:
-            if config_data and config_data.get('table_name') and 'YOUR_' not in str(config_data.get('table_name')):
-                self.table_name = config_data['table_name']
+            if not (config_data and config_data.get('table_name') and 'YOUR_' not in str(
+                    config_data.get('table_name'))):
+                config_incomplete = True
             else:
-                self._guide_user_to_config()
-                return
-        if config_data and config_data.get('path') and 'YOUR_' not in str(config_data.get('path')):
-            self.path_from_config = config_data['path']
+                self.table_name = config_data['table_name']
+
+        if config_incomplete:
+            self._guide_user_to_config()
+            self.is_ready = False
 
     def _guide_user_to_config(self):
         print("\n" + "=" * 60)
@@ -108,7 +133,8 @@ class GenericFileProcessor:
         for key, value in placeholders.items():
             if not self.config_manager.getConfig(key) or 'YOUR_' in str(self.config_manager.getConfig(key)):
                 self.config_manager.setConfig(key, value)
-        self.is_ready = False
+        print("请填写配置文件中的占位符信息后重新运行。")
+        print("=" * 60 + "\n")
 
     def _start_eazy_mode_server(self, sample_data: Dict[str, Any]):
         try:
@@ -131,15 +157,6 @@ class GenericFileProcessor:
         s1 = re.sub(r'(.)([A-Z][a-z]+)', r'\1_\2', name)
         return re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
 
-    def _safe_json_load(self, text: str) -> Optional[Dict]:
-        try:
-            return std_json.loads(text)
-        except std_json.JSONDecodeError:
-            try:
-                return ast.literal_eval(text)
-            except (ValueError, SyntaxError, MemoryError, TypeError):
-                return None
-
     def _finalize_types(self, data_dict: dict) -> dict:
         final_data = {}
         for key, value in data_dict.items():
@@ -160,7 +177,8 @@ class GenericFileProcessor:
         for key in all_original_keys:
             value = json_data.get(key)
             data_with_defaults[key] = current_defaults[key] if (
-                                                                       value is None or value == '') and key in current_defaults else value
+                                                                           value is None or value == '') and key in current_defaults else value
+
         processed_data = {}
         if self.include_keys is not None:
             for original_key, value in data_with_defaults.items():
@@ -171,6 +189,7 @@ class GenericFileProcessor:
             for original_key, value in data_with_defaults.items():
                 if original_key not in current_excludes:
                     processed_data[self._to_snake_case(original_key)] = value
+
         if self.modifier_function:
             try:
                 with io.StringIO() as buf, redirect_stdout(buf):
@@ -189,12 +208,14 @@ class GenericFileProcessor:
                     else:
                         target_key_for_patch = self._to_snake_case(original_src_key)
                         value_for_patch = instruction
+
                     if target_key_for_patch is not None and (
                             self.include_keys is None or target_key_for_patch in self.include_keys):
                         processed_data[target_key_for_patch] = value_for_patch
             except Exception as e:
                 print(f"[ERROR] modifier_function 执行失败: {e}")
-                return None
+                raise CallbackException(f"modifier_function error: {e}") from e
+
         return self._finalize_types(processed_data)
 
     def _execute_batch(self, data_tuples: List[Tuple[Dict, int]], filename: str):
@@ -220,10 +241,9 @@ class GenericFileProcessor:
                         f"[ERROR] 定位到错误行!\n  - 文件: {filename}\n  - 行号: {line_num}\n  - 错误: {single_exception}\n  - 数据: {data_dict}")
                     print("=" * 80)
 
-                    # --- 核心改动：根据 auto_skip_error 决定行为 ---
                     if self.auto_skip_error:
                         print(f"  [INFO] 配置了自动跳过，已跳过第 {line_num} 行。")
-                        continue  # 直接跳过，继续下一行
+                        continue
 
                     choice = input("输入 'y' 跳过此行，'s' 跳过本批次剩余所有行，其他任意键将终止程序: ").lower()
                     if choice == 'y':
@@ -237,7 +257,7 @@ class GenericFileProcessor:
                         raise single_exception
             if self.callBack and successful_rows:
                 self.callBack(True, successful_rows, filename,
-                                                                max(item[1] for item in data_tuples))
+                              max(item[1] for item in data_tuples if item[0] in successful_rows))
             print("--- 逐行恢复模式结束 ---")
 
     def _get_display_width(self, text: str) -> int:
@@ -257,11 +277,13 @@ class GenericFileProcessor:
                                                           w2=col_widths[1], w3=col_widths[2])
         print(header)
         print("-" * (sum(col_widths) + 7))
+
         processed_sample = self._process_single_item(sample_json)
         if not processed_sample:
             print("  [WARNING] 无法从样本数据生成映射表，因为处理后的样本为空或无效。")
             print("=" * 102 + "\n")
             return
+
         target_to_original_key_map = {self._to_snake_case(k): k for k in sample_json.keys()}
         if self.modifier_function:
             try:
@@ -273,6 +295,7 @@ class GenericFileProcessor:
                         target_to_original_key_map[instr[0]] = src
             except Exception:
                 pass
+
         for target_key in sorted(processed_sample.keys()):
             original_key = target_to_original_key_map.get(target_key, 'N/A (新/未知源)')
             value_str = str(processed_sample[target_key])
@@ -283,32 +306,7 @@ class GenericFileProcessor:
                 f"| {original_key}{' ' * padding[0]} | {target_key}{' ' * padding[1]} | {value_display}{' ' * padding[2]} |")
         print("=" * 102 + "\n")
 
-    def _get_random_samples_from_file(self, file_path: str, sample_size: int) -> List[Dict]:
-        samples = []
-        try:
-            total_lines = count_lines_in_single_file(file_path)
-            if total_lines == 0:
-                return []
-            num_samples_to_take = min(sample_size, total_lines)
-            target_line_nums = sorted(random.sample(range(1, total_lines + 1), num_samples_to_take))
-            current_line_num, target_index = 0, 0
-            with open(file_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    current_line_num += 1
-                    if target_index >= len(target_line_nums):
-                        break
-                    if current_line_num == target_line_nums[target_index]:
-                        target_index += 1
-                        if not line.strip():
-                            continue
-                        if json_data := self._safe_json_load(line):
-                            samples.append(json_data)
-        except Exception as e:
-            print(f"[WARNING] 从文件 '{os.path.basename(file_path)}' 随机抽样时出错: {e}")
-        return samples
-
     def _find_original_key(self, snake_key: str, sample_json: Dict[str, Any]) -> Optional[str]:
-        """根据 snake_case 键反查原始键。"""
         for key in sample_json.keys():
             if self._to_snake_case(key) == snake_key:
                 return key
@@ -331,17 +329,23 @@ class GenericFileProcessor:
                 pass
         return None
 
-    def _run_test_mode(self, file_path: str):
-        """执行测试模式，自动诊断并建议修复方案。"""
+    def _run_test_mode(self):
         print("\n--- 启动测试模式 ---")
         if self.include_keys is not None:
             print("[INFO] 由于 'include_keys' 已指定，测试模式将不会运行。")
             return
-        print(f"将从文件 '{os.path.basename(file_path)}' 中随机抽取样本进行测试...")
-        raw_json_batch = self._get_random_samples_from_file(file_path, self.batch_size)
+
+        files_to_test = self.reader.get_files()
+        if not files_to_test:
+            print("[ERROR] Reader 未找到任何文件进行测试。")
+            return
+
+        print(f"将从文件 '{os.path.basename(files_to_test[0])}' 中随机抽取样本进行测试...")
+        raw_json_batch = self.reader.get_samples(self.batch_size)
         if not raw_json_batch:
             print("[ERROR] 未能在文件中找到或抽取到有效的JSON数据进行测试。")
             return
+
         print(f"已随机抽取 {len(raw_json_batch)} 条记录进行自检。")
         suggested_excludes, suggested_defaults, attempt = set(), {}, 0
         while True:
@@ -353,7 +357,7 @@ class GenericFileProcessor:
                                    [self._process_single_item(item, suggested_excludes, suggested_defaults) for item in
                                     raw_json_batch] if item is not None]
                 test_data_tuples = [(item, 0) for item in processed_batch]
-                self._execute_batch(test_data_tuples, os.path.basename(file_path))
+                self._execute_batch(test_data_tuples, os.path.basename(files_to_test[0]))
                 print("  [成功] 当前配置有效，测试通过！")
                 break
             except Exception as e:
@@ -381,20 +385,17 @@ class GenericFileProcessor:
             print("\n未发现需要排除的字段。")
         print("=" * 60 + "\n")
 
-    def run(self, path: Optional[str] = None, start_line: int = 1, test: bool = False, isAllMapping: bool = False):
+    def run(self, start_line: int = 1, test: bool = False, isAllMapping: bool = False):
+        if not self.is_ready:
+            print("[INFO] 处理器尚未就绪，请根据提示完成配置后再次运行。")
+            return
+
         if self.eazy:
-            target_path = path if path is not None else self.path_from_config
-            if not target_path or not os.path.exists(target_path):
-                print(f"[ERROR] Eazy Mode 需要一个有效的文件或目录路径 ('path') 来提取样本数据。")
-                return
-            files_to_process = [os.path.join(target_path, f) for f in os.listdir(target_path) if
-                                os.path.isfile(os.path.join(target_path, f)) and f.lower().endswith(
-                                    ('.json', '.txt'))] if os.path.isdir(target_path) else [target_path]
-            if not files_to_process:
-                print(f"在路径 '{target_path}' 中未找到可用于 Eazy Mode 的样本文件。")
+            if not self.reader or not self.reader.get_files():
+                print(f"[ERROR] Eazy Mode 需要一个有效的 Reader 来提取样本数据。")
                 return
             print("[INFO] Eazy Mode 正在从文件中随机抽样以构建配置界面...")
-            samples = self._get_random_samples_from_file(files_to_process[0], 500)
+            samples = self.reader.get_samples(500)
             composite_sample = {}
             for sample_data in reversed(samples):
                 composite_sample.update(sample_data)
@@ -404,20 +405,8 @@ class GenericFileProcessor:
             self._start_eazy_mode_server(composite_sample)
             return
 
-        if not self.is_ready:
-            print("[INFO] 处理器尚未就绪，请根据提示完成配置后再次运行。")
-            return
-
-        target_path = path if path is not None else self.path_from_config
-        if not target_path or not os.path.exists(target_path):
-            print(f"[ERROR] 目标路径无效或不存在: {target_path}")
-            return
-
-        files_to_process = [os.path.join(target_path, f) for f in os.listdir(target_path) if
-                            os.path.isfile(os.path.join(target_path, f)) and f.lower().endswith(
-                                ('.json', '.txt'))] if os.path.isdir(target_path) else [target_path]
+        files_to_process = self.reader.get_files()
         if not files_to_process:
-            print(f"在路径 '{target_path}' 中未找到可处理的文件。")
             return
 
         if isAllMapping:
@@ -425,8 +414,7 @@ class GenericFileProcessor:
                 print("[ERROR] 启用 isAllMapping 模式时，'include_keys' 参数必须提供。")
                 return
             print("\n--- 启动 'isAllMapping' 模式进行字段映射校验 ---")
-            raw_json_samples = self._get_random_samples_from_file(files_to_process[0],
-                                                                  sample_size=max(self.batch_size * 5, 1000))
+            raw_json_samples = self.reader.get_samples(sample_size=max(self.batch_size * 5, 1000))
             if not raw_json_samples:
                 print("[ERROR] 未能在文件中找到或抽取到有效的JSON数据进行映射校验。")
                 return
@@ -435,7 +423,8 @@ class GenericFileProcessor:
             for sample_item in raw_json_samples:
                 if processed_item := self._process_single_item(sample_item):
                     found_mapped_keys.update(processed_item.keys())
-            missing_include_keys = self.include_keys - found_mapped_keys
+
+            missing_include_keys = set(self.include_keys) - found_mapped_keys
             if not missing_include_keys:
                 print("\n  [成功] 所有 'include_keys' 中的字段都在样本数据中找到了对应的映射！")
             else:
@@ -447,57 +436,58 @@ class GenericFileProcessor:
 
         self.test = test
         if test:
-            self._run_test_mode(files_to_process[0])
+            self._run_test_mode()
             return
 
         if self.print_mapping_table:
             print("[INFO] 正在抽样以生成字段映射表...")
-            samples = self._get_random_samples_from_file(files_to_process[0], 100)
+            samples = self.reader.get_samples(100)
             composite_sample = {}
             for sample in reversed(samples):
                 composite_sample.update(sample)
             self._generate_and_print_mapping(composite_sample)
 
-        print(f"\n--- 开始处理路径: {target_path} ---")
+        print(f"\n--- 开始处理路径: {self.reader.path} ---")
         print(f"发现 {len(files_to_process)} 个文件待处理...")
         for i, file_path in enumerate(files_to_process):
             filename = os.path.basename(file_path)
             print(f"\n[{i + 1}/{len(files_to_process)}] 正在处理: {filename}")
             try:
                 data_tuples: List[Tuple[Dict, int]] = []
-                total_lines = count_lines_in_single_file(file_path) or 0
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    for line_num, line in enumerate(f, 1):
-                        if line_num < start_line:
+                total_lines = self.reader.get_total_items(file_path)
+
+                line_iterator = self.reader.read_file(file_path, start_line)
+                line_num = None
+                while True:
+                    try:
+                        json_data, line_num = next(line_iterator)
+
+                        if self.filter_function and not self.filter_function(json_data, line_num):
                             continue
-                        if not line.strip():
-                            continue
-                        try:
-                            json_data = self._safe_json_load(line)
-                            if not json_data:
-                                raise ValueError("JSON 解析失败或为空")
-                            if self.filter_function and not self.filter_function(json_data, line_num):
-                                continue
-                            if parsed_dic := self._process_single_item(json_data):
-                                data_tuples.append((parsed_dic, line_num))
-                            if total_lines > 0:
-                                bar = '█' * int(40 * line_num / total_lines) + '-' * (
-                                        40 - int(40 * line_num / total_lines))
-                                sys.stdout.write(
-                                    f'\r|{bar}| {line_num / total_lines:.1%} ({line_num}/{total_lines})  本批: [{len(data_tuples)}/{self.batch_size}]')
-                                sys.stdout.flush()
-                            if len(data_tuples) >= self.batch_size:
-                                self._execute_batch(data_tuples, filename)
-                                data_tuples = []
-                        except Exception as parse_e:
-                            error_msg = f"\n[WARNING] 处理文件 {filename} 第 {line_num} 行时发生错误: {parse_e}"
-                            if self.on_error == 'stop':
-                                raise
-                            if self.on_error == 'log_to_file':
-                                with open('error.log', 'a', encoding='utf-8') as err_f:
-                                    err_f.write(
-                                        f"{datetime.now()} | {filename} | Line {line_num} | {parse_e}\n{line}\n")
-                            print(error_msg)
+                        if parsed_dic := self._process_single_item(json_data):
+                            data_tuples.append((parsed_dic, line_num))
+
+                        if total_lines > 0:
+                            bar = '█' * int(40 * line_num / total_lines) + '-' * (40 - int(40 * line_num / total_lines))
+                            sys.stdout.write(
+                                f'\r|{bar}| {line_num / total_lines:.1%} ({line_num}/{total_lines})  本批: [{len(data_tuples)}/{self.batch_size}]')
+                            sys.stdout.flush()
+
+                        if len(data_tuples) >= self.batch_size:
+                            self._execute_batch(data_tuples, filename)
+                            data_tuples = []
+
+                    except StopIteration:
+                        break  # 文件读取完毕
+                    except Exception as parse_e:
+                        error_msg = f"\n[WARNING] 处理文件 {filename} 第 {line_num} 行时发生错误: {parse_e}"
+                        if self.on_error == 'stop':
+                            raise
+                        if self.on_error == 'log_to_file':
+                            with open('error.log', 'a', encoding='utf-8') as err_f:
+                                err_f.write(f"{datetime.now()} | {filename} | Line {line_num} | {parse_e}\n")
+                        print(error_msg)
+
                 print()
                 self._execute_batch(data_tuples, filename)
                 print(f"  [成功] 文件已处理。")

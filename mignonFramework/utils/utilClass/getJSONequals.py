@@ -1,4 +1,4 @@
-from mignonFramework.utils.execJSTo import execJS
+from mignonFramework.utils.execJS.execJSTo import execJS
 from mignonFramework.utils.Queues import QueueIter
 import os
 

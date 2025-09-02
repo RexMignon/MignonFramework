@@ -5,8 +5,7 @@ import time
 import functools
 from typing import List, Dict, Any, Optional
 
-# 假设 BaseWriter 在这个路径
-from mignonFramework.utils.BaseWriter import BaseWriter
+from mignonFramework.utils.writer.BaseWriter import BaseWriter
 
 
 # --- 新增的装饰器，用于实现自动重连 ---

@@ -751,15 +751,18 @@ JsonConfigManager 的核心是**“配置即对象，操作即保存”**。
 
 使用方法
 1. 定义配置模板并获取实例
+
 ```python
 # my_config.py
-from mignonFramework.utils.JsonlConfigReader import JsonConfigManager
+from mignonFramework.utils.config.JsonlConfigReader import JsonConfigManager
+
 
 # (推荐) 定义一个与JSON结构对应的类，以获得更好的IDE提示和代码可读性
 class AppConfig:
     host: str
     port: int
     users: list
+
 
 # 1. 创建一个 manager 实例，指向你的配置文件
 config_manager = JsonConfigManager(filename='./resources/config/app_settings.json')
@@ -815,9 +818,10 @@ PrintDirectoryTree 是一个简洁而实用的开发辅助工具，用于在控�
 
 使用方法
 使用方法极其简单，只需导入并调用函数即可。
+
 ```python
 
-from mignonFramework.utils.printDirectoryTree import print_directory_tree
+from mignonFramework.utils.utilClass.printDirectoryTree import print_directory_tree
 
 # 定义你想要打印的目录路径
 target_path = './MignonFramework'
@@ -828,7 +832,7 @@ print_directory_tree(target_path)
 
 ```
 输出示例:
-
+```
 项目 './MignonFramework' 的目录结构如下:
 ├── resources
 │   └── config
@@ -838,7 +842,7 @@ print_directory_tree(target_path)
 │   ├── JsonlConfigReader.py
 │   └── printDirectoryTree.py
 └── README.md
-
+```
 参数
 print_directory_tree(path, indent=0)
 

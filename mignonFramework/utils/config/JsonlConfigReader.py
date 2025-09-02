@@ -2,7 +2,7 @@ import os
 import json
 import sys
 import threading
-from typing import Any, List, Type, TypeVar, Generic, get_origin, get_args, Callable
+from typing import Any, List, Type, TypeVar, Generic, get_origin, get_args, Callable, Dict
 
 T = TypeVar('T')
 
@@ -28,7 +28,9 @@ class _ConfigObject:
             if isinstance(value, list):
                 return _ConfigList(value, self._save_callback, item_cls)
 
+        # 检查是否是普通类（非泛型），并且值是字典
         if isinstance(type_hint, type) and not get_origin(type_hint) and isinstance(value, dict):
+            # 排除内置的集合类型
             if type_hint not in (str, int, float, bool, dict, list, set):
                 return _ConfigObject(value, self._save_callback, type_hint)
 
@@ -55,6 +57,11 @@ class _ConfigObject:
     def __getattr__(self, name: str) -> Any:
         if name in self._data:
             value = self._data.get(name)
+            return self._wrap(name, value)
+        # 如果数据中没有，但类中有默认值，也返回它
+        if hasattr(self._template_cls, name):
+            value = getattr(self._template_cls, name)
+            # 包装一下以支持嵌套操作
             return self._wrap(name, value)
         return None
 
@@ -119,15 +126,52 @@ class _ConfigList(Generic[T]):
 
     def __repr__(self) -> str:
         return f"<ConfigList wrapping {self._data}>"
+
 class JsonConfigManager:
-    def __init__(self, filename: str = "./resources/config/config.json"):
+    def __init__(self, filename: str = "./resources/config/config.json", auto_generate_on_empty: bool = True):
         self._lock = threading.RLock()
         self.filename = self._resolve_config_path(filename)
+        self.auto_generate_on_empty = auto_generate_on_empty
         self.data: dict = {}
         self._load()
 
+    def _generate_defaults_for_class(self, target_cls: Type) -> dict:
+        """
+        (混合模式)
+        为类生成默认值字典。
+        - 如果属性有默认值，则使用它。
+        - 否则，根据类型生成一个"空"值。
+        """
+        defaults = {}
+        annotations = getattr(target_cls, '__annotations__', {})
+        for name, type_hint in annotations.items():
+            if hasattr(target_cls, name):
+                defaults[name] = getattr(target_cls, name)
+            else:
+                origin = get_origin(type_hint)
+                if type_hint in (int, float):
+                    defaults[name] = 0
+                elif type_hint is bool:
+                    defaults[name] = True
+                elif type_hint is str:
+                    defaults[name] = ""
+                elif origin in (list, List):
+                    defaults[name] = []
+                elif origin in (dict, Dict):
+                    defaults[name] = {}
+                elif isinstance(type_hint, type) and not origin:
+                    defaults[name] = self._generate_defaults_for_class(type_hint)
+                else:
+                    defaults[name] = None
+        return defaults
+
     def getInstance(self, cls: Type[T]) -> T:
         with self._lock:
+            # 只有在数据为空且开关为 True 时才生成默认配置
+            if not self.data and self.auto_generate_on_empty:
+                self.data = self._generate_defaults_for_class(cls)
+                if self.data:
+                    self._save()
             return _ConfigObject(self.data, self._save, cls)
 
     def _resolve_config_path(self, filename: str) -> str:
@@ -154,6 +198,8 @@ class JsonConfigManager:
     def _save(self):
         with self._lock:
             try:
+                dir_name = os.path.dirname(self.filename)
+                if dir_name: os.makedirs(dir_name, exist_ok=True)
                 with open(self.filename, 'w', encoding='utf-8') as f:
                     json.dump(self.data, f, ensure_ascii=False, indent=4)
             except IOError as e:
@@ -163,15 +209,10 @@ class JsonConfigManager:
 def injectJson(manager: JsonConfigManager):
     """
     装饰器工厂: 将一个类转换为一个配置对象的"工厂"。
-    当实例化这个被装饰的类时，它实际上会调用 manager.getInstance()
-    来返回一个链接到JSON文件的实时代理对象。
     """
     def decorator(cls: Type[T]) -> Callable[..., T]:
-        """
-        这个内部函数接收原始类 (例如 AppConfig) 并返回一个替代品。
-        """
-        # 这个 factory 函数将取代原始类的构造函数
         def factory(*args, **kwargs) -> T:
             return manager.getInstance(cls)
         return factory
     return decorator
+

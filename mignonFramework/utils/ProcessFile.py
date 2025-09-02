@@ -8,7 +8,7 @@ from typing import Dict, Any, Union, List
 import ast
 
 # 导入我们的新模块
-from mignonFramework.utils.ConfigReader import ConfigManager
+from mignonFramework.utils.config.ConfigReader import ConfigManager
 from mignonFramework.utils.BaseStateTracker import BaseStateTracker
 from mignonFramework.utils.SQLiteStateTracker import SQLiteStateTracker
 from mignonFramework.utils.MoveStateTracker import MoveStateTracker
@@ -190,7 +190,6 @@ async def _process_files_core(
                 await f_out.write(json.dumps(data, ensure_ascii=False) + '\n')
                 current_line_count += 1
 
-                # --- 修正：已移除 await ---
                 state_tracker.mark_as_finished(file_path)
 
             except Exception as e:
@@ -198,7 +197,6 @@ async def _process_files_core(
                 filename = os.path.basename(file_path)
                 print(f"\n[处理失败] 文件名: {filename}")
                 print(f"  错误信息: {error_msg}")
-                # --- 修正：已移除 await ---
                 state_tracker.mark_as_exception(file_path, error_msg)
                 continue
 

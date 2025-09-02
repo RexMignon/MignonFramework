@@ -3,7 +3,6 @@ import threading
 from typing import Optional, Union, List, Callable, Any, Dict, Tuple, Type
 
 # 假设 mignonFramework.utils.ConfigReader.ConfigManager 存在
-from mignonFramework.utils.ConfigReader import ConfigManager
 
 def target(queue_instance, attr_name, attr_value):
     def decorator(cls):

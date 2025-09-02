@@ -67,19 +67,17 @@ This module focuses on migration, not on intervening in transfers. It only handl
 """
 
 import sys
-import time
 import os
 import json
 from abc import ABC, abstractmethod
 from typing import List, Optional, Type, Dict
 from datetime import date, datetime
-import functools
 from collections import defaultdict
 
 
 try:
-    from mignonFramework.utils.JsonlConfigReader import JsonConfigManager
-    from mignonFramework.utils.MySQLManager import MysqlManager
+    from mignonFramework.utils.config.JsonlConfigReader import JsonConfigManager
+    from mignonFramework.utils.writer.MySQLManager import MysqlManager
 except ImportError:
     sys.exit(1)
 
