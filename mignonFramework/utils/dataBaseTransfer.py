@@ -32,6 +32,8 @@ cn:
 参照BaseWriter批量写入批量读取, 并参照MySQLManager进行重连机制
 因为是直接通过DDL copy的表, 因此不需要处理报错, 仅需拿到表名->拿到DDL->运行if not exists 直接覆盖
 即可, 因为本模块的目标是迁移, 而不是说干涉转移事件, 仅需处理的只有完整的表迁移.
+目前来说限制了非id的迁移, 虽说的确有解决办法, 如降级为offset传统分页,或者创建view等等有相当多的方法
+来做到跨越Id的问题, 但是我认为一个没有id的表实际上来说, 并非规范的表, 目的是促进规范
 En:
 This dataBase migration component is used to migrate databases, customize the interface, and perform batch migrations.
 The interface only defines insert and select operations. Because the migration is to the target database, cursor paging is used to record the last id. This is then queried using id > to greatly improve query efficiency. It also requires reading the target database's table information.
@@ -69,17 +71,16 @@ import time
 import os
 import json
 from abc import ABC, abstractmethod
-from typing import List, Optional, Type
+from typing import List, Optional, Type, Dict
 from datetime import date, datetime
 import functools
+from collections import defaultdict
+
 
 try:
     from mignonFramework.utils.JsonlConfigReader import JsonConfigManager
     from mignonFramework.utils.MySQLManager import MysqlManager
 except ImportError:
-    print("[致命错误] 无法导入 mignonFramework 的模块。")
-    print("请确保 mignonFramework 已正确安装 (例如: pip install mignonFramework)")
-    print("或者项目结构正确，可以找到 utils.JsonlConfigReader 和 utils.MySQLManager。")
     sys.exit(1)
 
 
@@ -88,6 +89,9 @@ try:
 except ImportError:
     Flask = None
 
+
+# --- 1. 配置模型定义 ---
+# 定义与 JSON 结构严格对应的配置类
 class TransferConfig:
     needToTransferredDataBase: str
     userName: str
@@ -105,8 +109,8 @@ class TransferConfig:
     nowLastId: int
     isInclude: bool
     includeList: List[str]
-    batchSize: int = 1000
-    autoSkipError: bool = False
+    batchSize: int = 1000  # 默认的批量大小
+    autoSkipError: bool = False # 新增：是否自动跳过错误行
 
 # --- 2. 抽象的数据库迁移基类 ---
 class AbstractDatabaseTransfer(ABC):
@@ -149,6 +153,15 @@ class AbstractDatabaseTransfer(ABC):
         pass
 
     @abstractmethod
+    def get_table_dependencies(self, db_name: str) -> Dict[str, List[str]]:
+        """
+        获取指定数据库中所有表的外键依赖关系。
+        返回一个字典，键为表名，值为该表依赖的其他表名列表。
+        例如: {'table_a': ['table_b', 'table_c']}
+        """
+        pass
+
+    @abstractmethod
     def create_table_in_target(self, ddl: str):
         """在目标数据库中执行 DDL 创建表。"""
         pass
@@ -188,13 +201,21 @@ class AbstractDatabaseTransfer(ABC):
         try:
             self.connect_dbs()
             all_tables = self.get_all_tables()
-            tables_to_transfer = self._filter_tables(all_tables)
 
-            if not tables_to_transfer:
+            # --- 新增: 获取依赖并排序 ---
+            print("正在解析数据库表依赖关系...")
+            dependencies = self.get_table_dependencies(self.config.needToTransferredDataBase)
+            tables_to_transfer = self._filter_tables(all_tables)
+            sorted_tables = self._sort_tables_by_dependencies(tables_to_transfer, dependencies)
+
+            if not sorted_tables:
                 print("所有表都已迁移或被排除，任务完成。")
                 return
 
-            for table in tables_to_transfer:
+            print("已按照依赖关系对迁移顺序进行排序：")
+            print(" -> ".join(sorted_tables))
+
+            for table in sorted_tables:
                 print("\n" + "-" * 60)
                 print(f"正在处理表: {table}")
 
@@ -219,7 +240,42 @@ class AbstractDatabaseTransfer(ABC):
         finally:
             self.close_dbs()
 
+    def _sort_tables_by_dependencies(self, tables: List[str], dependencies: Dict[str, List[str]]) -> List[str]:
+        """
+        使用拓扑排序对表进行排序。
+        如果存在循环依赖或无法排序，则打印警告并返回原始列表。
+        """
+        graph = {table: [] for table in tables}
+        in_degree = {table: 0 for table in tables}
 
+        # 构建图和入度
+        for table in tables:
+            if table in dependencies:
+                for parent_table in dependencies[table]:
+                    if parent_table in graph:
+                        graph[parent_table].append(table)
+                        in_degree[table] += 1
+
+        queue = [table for table in tables if in_degree[table] == 0]
+        sorted_list = []
+
+        while queue:
+            node = queue.pop(0)
+            sorted_list.append(node)
+            for neighbor in graph[node]:
+                in_degree[neighbor] -= 1
+                if in_degree[neighbor] == 0:
+                    queue.append(neighbor)
+
+        if len(sorted_list) != len(tables):
+            print("\n[警告] 无法按照依赖关系对所有表进行排序，可能存在循环依赖或遗漏的表。")
+            print("将按照原始顺序继续迁移。")
+            return tables
+
+        return sorted_list
+
+
+# --- 3. 针对 MySQL 的具体迁移实现 ---
 class MySQLToMySQLTransfer(AbstractDatabaseTransfer):
     """
     针对 MySQL -> MySQL 迁移的具体实现。
@@ -276,6 +332,32 @@ class MySQLToMySQLTransfer(AbstractDatabaseTransfer):
                 cursor.execute(query)
                 result = cursor.fetchone()
         return result['Create Table']
+
+    def get_table_dependencies(self, db_name: str) -> Dict[str, List[str]]:
+        query = """
+                SELECT
+                    TABLE_NAME,
+                    REFERENCED_TABLE_NAME
+                FROM
+                    INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+                WHERE
+                    TABLE_SCHEMA = %s AND
+                    REFERENCED_TABLE_NAME IS NOT NULL;
+                """
+        dependencies = defaultdict(list)
+        results = None
+        if hasattr(self.source_db, 'pool'):
+            results = self.source_db.fetch_all(query, (db_name,))
+        else:
+            with self.source_db.connection.cursor() as cursor:
+                cursor.execute(query, (db_name,))
+                results = cursor.fetchall()
+
+        for row in results:
+            dependencies[row['TABLE_NAME']].append(row['REFERENCED_TABLE_NAME'])
+
+        return dict(dependencies)
+
 
     def create_table_in_target(self, ddl: str):
         ddl_if_not_exists = ddl.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
@@ -381,7 +463,8 @@ class MySQLToMySQLTransfer(AbstractDatabaseTransfer):
                     row_copy = row.copy()
                     for col in generated_columns:
                         if col in row_copy:
-                            del row_copy[col]
+                            if col in row_copy:
+                                del row_copy[col]
                     final_data_batch.append(row_copy)
             else:
                 final_data_batch = cleaned_data_batch
@@ -425,7 +508,6 @@ class MySQLToMySQLTransfer(AbstractDatabaseTransfer):
             bar = '█' * int(40 * percentage) + '-' * (40 - int(40 * percentage))
             sys.stdout.write(f'\r|{bar}| {percentage:.1%} ({last_id}/{max_id})  本批: [{len(data_batch)}]')
             sys.stdout.flush()
-
 
 # --- 4. Eazy Mode Web 应用 ---
 class TransferEazyAppRunner:
@@ -499,7 +581,11 @@ class TransferEazyAppRunner:
             <div class="card-body">
                 <button id="fetch-tables-btn" class="btn btn-primary" disabled>首先，请获取表列表</button>
                 <div id="table-config-wrapper" class="hidden" style="margin-top:1.5rem;">
-                    <div class="form-group"><label>过滤模式</label><select id="filter-mode" class="form-control" style="max-width: 200px;"><option value="include" selected>包含模式 (Include)</option><option value="exclude">排除模式 (Exclude)</option></select></div>
+                    <div style="display: flex; gap: 1rem; margin-bottom: 1rem; align-items: center;">
+                        <div class="form-group" style="flex-grow: 1;"><label>过滤模式</label><select id="filter-mode" class="form-control" style="max-width: 200px;"><option value="include" selected>包含模式 (Include)</option><option value="exclude">排除模式 (Exclude)</option></select></div>
+                        <button id="select-all-btn" class="btn btn-secondary" style="min-width: unset;">全选</button>
+                        <button id="deselect-all-btn" class="btn btn-secondary" style="min-width: unset;">取消全选</button>
+                    </div>
                     <div id="table-list-wrapper"></div>
                 </div>
             </div>
@@ -544,6 +630,8 @@ class TransferEazyAppRunner:
             const fetchTablesBtn = document.getElementById('fetch-tables-btn');
             const generateBtn = document.getElementById('generate-btn');
             const tablesCard = document.getElementById('tables-card');
+            const selectAllBtn = document.getElementById('select-all-btn');
+            const deselectAllBtn = document.getElementById('deselect-all-btn');
             
             const testConnection = async (type) => {
                 const btn = document.getElementById(`test-${type}-btn`);
@@ -611,6 +699,17 @@ class TransferEazyAppRunner:
                 } else { 
                     alert('获取表列表失败: ' + result.error); 
                 }
+            });
+            
+            // 新增全选/取消全选按钮的事件监听器
+            selectAllBtn.addEventListener('click', () => {
+                const checkboxes = document.querySelectorAll('#table-list-wrapper input[type="checkbox"]');
+                checkboxes.forEach(cb => cb.checked = true);
+            });
+            
+            deselectAllBtn.addEventListener('click', () => {
+                const checkboxes = document.querySelectorAll('#table-list-wrapper input[type="checkbox"]');
+                checkboxes.forEach(cb => cb.checked = false);
             });
 
             generateBtn.addEventListener('click', async () => {
@@ -687,10 +786,9 @@ class TransferEazyAppRunner:
 
         @self.app.route('/favicon.ico')
         def favicon():
-            # 这是一个兜底路由，防止找不到图标时产生404日志
-            # 你可以将一个真实的ico文件放在指定目录
-            static_folder = os.path.join(self.current_dir, 'static')
-            return send_from_directory(static_folder, 'favicon.ico', mimetype='image/vnd.microsoft.icon')
+            static_folder = os.path.join(self.current_dir, 'starterUtil', "static/ico")
+            return send_from_directory(static_folder, 'favicon.ico')
+
 
         @self.app.route('/get_tables', methods=['POST'])
         def get_tables():
@@ -842,4 +940,5 @@ if __name__ == '__main__':
 
     runner = DatabaseTransferRunner(eazy=is_eazy_mode)
     runner.run()
+
 
