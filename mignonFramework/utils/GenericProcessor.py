@@ -160,8 +160,8 @@ class GenericFileProcessor:
     def _finalize_types(self, data_dict: dict) -> dict:
         final_data = {}
         for key, value in data_dict.items():
-            if value is None:
-                final_data[key] = ''
+            if value is None or (isinstance(value, str) and value.strip() == ''):
+                final_data[key] = None
             elif isinstance(value, (dict, list)):
                 final_data[key] = std_json.dumps(value, ensure_ascii=False)
             else:
@@ -171,15 +171,15 @@ class GenericFileProcessor:
     def _process_single_item(self, json_data: dict, temp_exclude_keys: Optional[Set[str]] = None,
                              temp_default_values: Optional[Dict[str, Any]] = None) -> Optional[Dict]:
         current_excludes = self.exclude_keys.union(temp_exclude_keys or set())
-        current_defaults = {**self.default_values, **(temp_default_values or {})}
-        data_with_defaults = {}
-        all_original_keys = set(json_data.keys()) | set(current_defaults.keys())
-        for key in all_original_keys:
-            value = json_data.get(key)
-            data_with_defaults[key] = current_defaults[key] if (
-                                                                           value is None or value == '') and key in current_defaults else value
+
+        # 应用 default_values
+        data_with_defaults = {**json_data}
+        for key, default_value in (temp_default_values or self.default_values).items():
+            if data_with_defaults.get(key) in (None, ''):
+                data_with_defaults[key] = default_value
 
         processed_data = {}
+        # 应用 include_keys 或 exclude_keys
         if self.include_keys is not None:
             for original_key, value in data_with_defaults.items():
                 snake_case_key = self._to_snake_case(original_key)
@@ -190,28 +190,35 @@ class GenericFileProcessor:
                 if original_key not in current_excludes:
                     processed_data[self._to_snake_case(original_key)] = value
 
+        # 应用 modifier_function
         if self.modifier_function:
             try:
                 with io.StringIO() as buf, redirect_stdout(buf):
                     patch_dict = self.modifier_function(data_with_defaults)
+
+                # 智能识别被 modifier 显式处理过的键，并更新 processed_data
                 for original_src_key, instruction in patch_dict.items():
-                    target_key_for_patch, value_for_patch = None, None
+                    target_key_for_patch = None
+                    value_for_patch = None
+
                     if isinstance(instruction, Rename):
                         target_key_for_patch = instruction.new_key_name
                         value_for_patch = data_with_defaults.get(original_src_key)
-                        if self._to_snake_case(original_src_key) in processed_data:
-                            del processed_data[self._to_snake_case(original_src_key)]
                     elif isinstance(instruction, tuple) and len(instruction) == 2:
                         target_key_for_patch, value_for_patch = instruction
-                        if self._to_snake_case(original_src_key) in processed_data:
-                            del processed_data[self._to_snake_case(original_src_key)]
                     else:
                         target_key_for_patch = self._to_snake_case(original_src_key)
                         value_for_patch = instruction
 
                     if target_key_for_patch is not None and (
                             self.include_keys is None or target_key_for_patch in self.include_keys):
+
+                        # 如果原始键被重命名，则移除旧键
+                        if target_key_for_patch != self._to_snake_case(original_src_key) and self._to_snake_case(original_src_key) in processed_data:
+                            del processed_data[self._to_snake_case(original_src_key)]
+
                         processed_data[target_key_for_patch] = value_for_patch
+
             except Exception as e:
                 print(f"[ERROR] modifier_function 执行失败: {e}")
                 raise CallbackException(f"modifier_function error: {e}") from e

@@ -3,7 +3,7 @@ from mignonFramework.utils.Queues import QueueIter
 import os
 
 
-@execJS(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'starterUtil\static', "js\JSONcrypto.jsx"))
+@execJS(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..\starterUtil\static', "js\JSONcrypto.jsx"))
 def jsondec(json1, json2):
     return []
 

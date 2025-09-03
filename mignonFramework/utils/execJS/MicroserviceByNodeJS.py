@@ -15,7 +15,7 @@ class MicroServiceByNodeJS:
     def __init__(self, client_only=False, logger:Logger=None, port=3000, url_base="127.0.0.1", scan_dir="./resources/js",
                  invoker_path=None, js_log_print=True):
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        static_folder = os.path.join(current_dir, 'starterUtil', "static")
+        static_folder = os.path.join(current_dir, '../starterUtil', "static")
         self.port = port
         self.js_log = js_log_print
         if invoker_path is None:

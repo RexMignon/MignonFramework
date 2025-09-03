@@ -1,4 +1,3 @@
-# MysqlManager.py
 import pymysql
 import pymysql.cursors
 import time
@@ -13,27 +12,18 @@ def ensure_connection(func):
     """
     一个装饰器，确保在执行数据库操作前连接是有效的。
     如果连接断开，它将根据预设的策略尝试重新连接。
+    此版本仅处理真正的连接错误，数据相关错误将由调用者处理。
     """
 
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
         try:
-            # 高效地检查连接是否存活，reconnect=True 会尝试自动重连一次
             self.connection.ping(reconnect=True)
-        except (pymysql.err.OperationalError, pymysql.err.InterfaceError):
-            print("[MySQLManager] 连接已丢失，正在尝试重新连接...")
-            self.reconnect()  # 执行完整的重连逻辑
-
-        # 再次尝试执行原始方法
-        while True:
-            try:
-                return func(self, *args, **kwargs)
-            except (pymysql.err.OperationalError, pymysql.err.InterfaceError) as e:
-                # 如果在ping之后、操作完成之前连接再次断开
-                print(f"[MySQLManager] 操作期间连接丢失: {e}。将再次尝试重连并执行操作。")
-                self.reconnect()
-                # 最后再尝试一次
-                return func(self, *args, **kwargs)
+            return func(self, *args, **kwargs)
+        except (pymysql.err.OperationalError, pymysql.err.InterfaceError) as e:
+            print(f"[MySQLManager] 连接已丢失或操作期间连接断开: {e}。将再次尝试重连并执行操作。")
+            self.reconnect()
+            return func(self, *args, **kwargs)
 
     return wrapper
 
