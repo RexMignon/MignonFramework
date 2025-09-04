@@ -104,11 +104,13 @@ class GenericFileProcessor:
             if config_data and all(config_data.get(k) and 'YOUR_' not in str(config_data.get(k)) for k in db_keys):
                 db_config = {k: config_data[k] for k in db_keys}
                 db_config['port'] = int(db_config.get('port', 3306))
-                self.writer = MysqlManager(**db_config)
-                if not self.writer.is_connected():
-                    print(f"[ERROR] 使用 generic.ini 中的配置连接数据库失败。")
-                    self.is_ready = False
-                    return
+                try:
+                    self.writer = MysqlManager(**db_config)
+                    if not self.writer.is_connected():
+                        raise ConnectionError("数据库连接测试失败，请检查配置和网络状态。")
+                except Exception as e:
+                    print(f"[ERROR] 初始化数据库连接时发生致命错误: {e}")
+                    raise ConnectionError(f"无法连接到数据库: {e}") from e
             else:
                 config_incomplete = True
 
@@ -225,6 +227,37 @@ class GenericFileProcessor:
 
         return self._finalize_types(processed_data)
 
+    def _is_skippable_sql_error(self, exception: Exception) -> bool:
+        """
+        判断一个异常是否是可跳过的、与单行数据相关的SQL错误。
+        :param exception: 捕获到的异常对象。
+        :return: 如果是可跳过的数据错误则返回 True，否则返回 False。
+        """
+        if not hasattr(exception, 'args') or not isinstance(exception.args, tuple):
+            return False
+
+        error_message = str(exception).lower()
+        skippable_codes = {
+            1054, 1062, 1265, 1292, 1366, 1406, 1452,
+        }
+        fatal_codes = {
+            2002, 2003, 2006, 2013,
+        }
+
+        code_match = re.search(r"\((\d+),", str(exception))
+        if code_match:
+            code = int(code_match.group(1))
+            if code in skippable_codes:
+                return True
+            if code in fatal_codes:
+                return False
+
+        skippable_keywords = ["duplicate entry", "data too long", "incorrect integer value", "unknown column"]
+        if any(keyword in error_message for keyword in skippable_keywords):
+            return True
+
+        return False
+
     def _execute_batch(self, data_tuples: List[Tuple[Dict, int]], filename: str):
         if not data_tuples:
             return
@@ -237,12 +270,20 @@ class GenericFileProcessor:
         except Exception as batch_exception:
             print(f"\n[WARNING] 批量写入失败 (文件: {filename})。错误: {batch_exception}")
             print("--- 即将进入逐行恢复模式 ---")
-            successful_rows = []
             for i, (data_dict, line_num) in enumerate(data_tuples):
                 try:
                     self.writer.upsert_single(data_dict, self.table_name, test=self.test)
-                    successful_rows.append(data_dict)
+                    if self.callBack:
+                        self.callBack(True, [data_dict], filename, line_num)
+
                 except Exception as single_exception:
+                    if not self._is_skippable_sql_error(single_exception):
+                        print("\n" + "=" * 80)
+                        print(f"[FATAL] 遇到不可恢复的错误，程序将终止。")
+                        print(f"  - 文件: {filename}\n  - 行号: {line_num}\n  - 错误: {single_exception}")
+                        print("=" * 80)
+                        raise single_exception
+
                     print("\n" + "=" * 80)
                     print(
                         f"[ERROR] 定位到错误行!\n  - 文件: {filename}\n  - 行号: {line_num}\n  - 错误: {single_exception}\n  - 数据: {data_dict}")
@@ -251,8 +292,12 @@ class GenericFileProcessor:
                     if self.auto_skip_error:
                         print(f"  [INFO] 配置了自动跳过，已跳过第 {line_num} 行。")
                         continue
+                    try:
+                        choice = input("输入 'y' 跳过此行，'s' 跳过本批次剩余所有行，其他任意键将终止程序: ").lower()
+                    except EOFError:
+                        print("\n  [FATAL] 检测到非交互式环境 (EOFError)，无法请求用户输入。将终止当前文件处理。")
+                        raise  # [MODIFIED] Re-raise the EOFError itself to be caught by the outer loop
 
-                    choice = input("输入 'y' 跳过此行，'s' 跳过本批次剩余所有行，其他任意键将终止程序: ").lower()
                     if choice == 'y':
                         print(f"  [INFO] 已跳过第 {line_num} 行。")
                         continue
@@ -262,9 +307,6 @@ class GenericFileProcessor:
                     else:
                         print("  [FATAL] 用户选择终止程序。")
                         raise single_exception
-            if self.callBack and successful_rows:
-                self.callBack(True, successful_rows, filename,
-                              max(item[1] for item in data_tuples if item[0] in successful_rows))
             print("--- 逐行恢复模式结束 ---")
 
     def _get_display_width(self, text: str) -> int:
@@ -485,7 +527,9 @@ class GenericFileProcessor:
                             data_tuples = []
 
                     except StopIteration:
-                        break  # 文件读取完毕
+                        break
+                    except EOFError:
+                        raise
                     except Exception as parse_e:
                         error_msg = f"\n[WARNING] 处理文件 {filename} 第 {line_num} 行时发生错误: {parse_e}"
                         if self.on_error == 'stop':
@@ -500,5 +544,6 @@ class GenericFileProcessor:
                 print(f"  [成功] 文件已处理。")
             except Exception as e:
                 print(f"\n  [失败] 处理文件 {filename} 时发生致命错误: {e}。")
-                continue
+                raise e
         print("\n--- 所有任务处理完成 ---")
+
