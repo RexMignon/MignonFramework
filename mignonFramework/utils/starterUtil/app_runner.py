@@ -19,7 +19,7 @@ class StarterAppRunner:
             template_folder=template_folder,
             static_folder=static_folder
         )
-        self.app.register_blueprint(starter_bp) # 注册 Blueprint，而不是调用 register_routes 函数
+        self.app.register_blueprint(starter_bp)
 
     def run(self, host='0.0.0.0'):
         """启动Flask服务器"""

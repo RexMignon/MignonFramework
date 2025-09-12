@@ -7,6 +7,7 @@ from datetime import datetime
 import threading
 import contextlib
 
+
 class _Colors:
     """一个用于存储 ANSI 颜色代码的内部类。"""
     RESET = '\033[0m'
@@ -14,13 +15,15 @@ class _Colors:
     YELLOW = '\033[33m'
     BLUE = '\033[34m'
     CYAN = '\033[36m'
-    MAGENTA = '\033[35m' # 为 EXIST 级别新增颜色
+    MAGENTA = '\033[35m'  # 为 EXIST 级别新增颜色
+
 
 class _AutoLoggerStream:
     """
     一个自定义的流对象，用于拦截所有标准输出。
     它能智能区分普通 print 和带 \r 的单行更新。
     """
+
     def __init__(self, logger_instance):
         self._logger = logger_instance
         self._original_stdout = sys.__stdout__
@@ -104,29 +107,29 @@ class _AutoLoggerStream:
             error_msg = f"FATAL: Exception in _AutoLoggerStream.write.\n  - Error: {e!r}\n  - Traceback:\n{tb_string}"
             sys.__stderr__.write(error_msg)
 
-
     def flush(self):
         """提供 flush 方法以兼容标准流接口。"""
         self._original_stdout.flush()
+
 
 class Logger:
     """
     一个健壮的、混合模式的日志框架，支持日志分割和彩色输出。
     """
-    MAX_LOG_LINES = 100000 # 日志文件最大行数
 
-    def __init__(self, enabld=False, log_path='./resources/log', name_template='{date}.log'):
+    def __init__(self, enabld=False, log_path='./resources/log', name_template='{date}.log',
+                 max_log_lines: int = 50000):
         self._log_path = log_path
         self._name_template = name_template
         self._lock = threading.RLock()
-        self._line_counts = {} # 缓存每个日志文件的行数
+        self._line_counts = {}  # 缓存每个日志文件的行数
         self.color_map = {
             "INFO": _Colors.YELLOW,
             "ERROR": _Colors.RED,
             "SYSTEM": _Colors.CYAN,
-            "EXIST": _Colors.MAGENTA # 新增 EXIST 级别颜色
+            "EXIST": _Colors.MAGENTA  # 新增 EXIST 级别颜色
         }
-
+        self.max_log_lines = max_log_lines
         # 使用普通的实例变量存储状态
         self._patch_is_active = enabld
         # 创建一个专用的锁来保护这个状态
@@ -181,7 +184,7 @@ class Logger:
 
         if base_path not in self._line_counts:
             self._line_counts[base_path] = self._count_lines_in_file(base_path)
-        if self._line_counts[base_path] < self.MAX_LOG_LINES:
+        if self._line_counts[base_path] < self.max_log_lines:
             return base_path
 
         index = 0
@@ -193,7 +196,7 @@ class Logger:
             if rotated_path not in self._line_counts:
                 self._line_counts[rotated_path] = self._count_lines_in_file(rotated_path)
 
-            if self._line_counts[rotated_path] < self.MAX_LOG_LINES:
+            if self._line_counts[rotated_path] < self.max_log_lines:
                 return rotated_path
             index += 1
 
@@ -238,6 +241,7 @@ class Logger:
 
     def __call__(self, func):
         """核心装饰器逻辑，用于 @log。"""
+
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             try:
@@ -250,4 +254,5 @@ class Logger:
                 error_msg = f"Exception in function '{func.__name__}'.\n  - Error: {e!r}\n  - Traceback:\n{tb_string}"
                 self.write_log("ERROR", error_msg)
                 raise
+
         return wrapper

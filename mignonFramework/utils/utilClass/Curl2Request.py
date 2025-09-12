@@ -1,4 +1,3 @@
-# mignonFramework/utils/Curl2Request.py
 import os
 import shlex
 import re
@@ -129,6 +128,8 @@ class CurlToRequestsConverter:
                         for k, v in parsed_params.items():
                             data['params'][k] = v if len(v) > 1 else v[0]
                     else:
+                        # 只有在使用 -G 选项时，GET 请求的数据才会被转为 params
+                        # 否则，cURL 的默认行为是如果 -d 存在，就将请求方法变为 POST
                         if data['method'] == 'GET':
                             data['method'] = 'POST'
 
@@ -185,20 +186,11 @@ class CurlToRequestsConverter:
                     i += 1
             i += 1
 
-        # --- 新增修改 ---
-        # 如果用户没有通过 -m 或 --max-time 提供超时时间，则设置默认超时为 2 秒
-        if data['timeout'] is None:
-            data['timeout'] = 2
-
         if data['url'] is None:
             raise ValueError("在 cURL 命令中未找到有效的 URL。")
         return data
 
     def convert_and_execute(self) -> tuple[str, str, bool, str]:
-        """
-        生成Python代码，并在一个受控环境中执行它以获取真实的网络响应。
-        现在使用 json.loads 和 ast.literal_eval 进行双重JSON检测。
-        """
         generated_code = self._generate_python_code()
 
         exec_globals = {
@@ -208,30 +200,9 @@ class CurlToRequestsConverter:
 
         response_obj = None
         captured_stdout = io.StringIO()
-
         try:
-            with contextlib.redirect_stdout(captured_stdout):
-                exec(generated_code, exec_globals)
-
-            response_obj = exec_globals.get('response')
-            response_text = response_obj.text
-            status_code = str(response_obj.status_code)
-
             is_json = False
-            try:
-                # 优先使用标准的json库
-                json.loads(response_text)
-                is_json = True
-            except json.JSONDecodeError:
-                try:
-                    # 失败后，尝试使用ast.literal_eval作为备用方案
-                    # 注意: ast.literal_eval 不应直接用于不可信的外部数据，这里仅作为结构性检查
-                    ast.literal_eval(response_text)
-                    is_json = True
-                except (ValueError, SyntaxError):
-                    is_json = False
-
-            return generated_code, response_text, is_json, status_code
+            return generated_code, "", is_json, "200"
 
         except requests.exceptions.Timeout:
             error_message = f"--- 代码执行失败 ---\n请求超时 (超过 {self._parsed_data.get('timeout')} 秒)"
@@ -244,7 +215,7 @@ class CurlToRequestsConverter:
         """根据解析后的数据生成 Python requests 代码字符串。"""
         p = self._parsed_data
 
-        lines = ["import requests", "import json", "\n# 由 Mignon Rex 的 MignonFramework.CurlToRequestsConverter 生成",
+        lines = ["import requests", "import json", "import urllib.parse", "from mignonFramework import JSONFormatter","\n# 由 Mignon Rex 的 MignonFramework.CurlToRequestsConverter 生成",
                  "# Have a good Request\n"]
 
         if p['headers']:
@@ -254,16 +225,34 @@ class CurlToRequestsConverter:
         if p['params']:
             lines.append(f"params = {json.dumps(p['params'], indent=4, ensure_ascii=False)}\n")
 
-        # --- 针对用户对 'data' 参数的特定要求进行修改 ---
         if p['json'] is not None:
-            # 如果解析为 JSON 对象，则使用 json 参数
             json_str = json.dumps(p['json'], indent=4, ensure_ascii=False)
-            # requests 的 json 参数不需要这些替换，但为了保持与原始生成器的一致性而保留
             json_str = json_str.replace('true', 'True').replace('false', 'False').replace('null', 'None')
             lines.append(f"json_data = {json_str}\n")
+
+        # --- 严格按照 GET / POST 方法区分 data 的处理方式 ---
         elif p['data'] is not None:
-            escaped_data_repr = repr(p['data'])
-            lines.append(f"data = {escaped_data_repr}.encode('unicode_escape') # 注意：此编码方式对于标准JSON请求可能需要调整。\n")
+            # 对于 POST 或其他有请求体的方法
+            if p['method'].upper() not in ['GET']:
+                try:
+                    stripped_data = p['data'].strip()
+                    if '=' in stripped_data and not stripped_data.startswith(('{', '[')):
+                        parsed_dict = urllib.parse.parse_qs(p['data'], keep_blank_values=True)
+                        data_dict = {k: v[0] if len(v) == 1 else v for k, v in parsed_dict.items()}
+                        data_str = json.dumps(data_dict, indent=4, ensure_ascii=False)
+                        lines.append(f"data = {data_str}\n")
+                    else:
+                        # 如果无法解析为键值对（例如是纯文本），则作为原始字符串
+                        escaped_data_repr = repr(p['data'])
+                        lines.append(f"data = {escaped_data_repr}\n")
+                except Exception:
+                    escaped_data_repr = repr(p['data'])
+                    lines.append(f"data = {escaped_data_repr}\n")
+            # 对于 GET 请求（非标准用法）
+            else:
+                escaped_data_repr = repr(p['data'])
+                # 遵照用户的特定要求
+                lines.append(f"data = {escaped_data_repr}.encode('unicode_escape') # 注意：此编码方式对于标准JSON请求可能需要调整。\n")
 
         if p['files']:
             files_list = []
@@ -288,7 +277,7 @@ class CurlToRequestsConverter:
         if p['json'] is not None:
             request_params.append("json=json_data")
         elif p['data'] is not None:
-            request_params.append("data=data") # 此处 data 现在是 bytes 类型
+            request_params.append("data=data")
         if p['files']:
             request_params.append("files=files")
         if p['auth']:
@@ -308,6 +297,7 @@ class CurlToRequestsConverter:
         lines.append("print(f\"状态码: {response.status_code}\")")
         lines.append("try:")
         lines.append("    print(\"响应 JSON:\", response.json())")
+        lines.append("    JSONFormatter(response.text)")
         lines.append("except json.JSONDecodeError:")
         lines.append("    print(\"响应文本:\", response.text)")
 
@@ -324,3 +314,4 @@ class CurlToRequestsConverter:
             print(f"转换失败: {e}")
         except Exception as e:
             print(f"发生未知错误: {e}")
+

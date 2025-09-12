@@ -26,6 +26,7 @@ from mignonFramework.utils.config.ConfigReader import ConfigManager
 from mignonFramework.utils.config.ConfigReader import inject
 from mignonFramework.utils.execJS.execJSTo import execJS
 from mignonFramework.utils.mignonFramework_starter import start
+from mignonFramework.utils.utilClass.JSONFormatter import JSONFormatter
 from mignonFramework.utils.utilClass.SqlDDL2List import extract_column_names_from_ddl as extractDDL2List
 from mignonFramework.utils.utilClass.getJSONequals import jsonContrast
 from mignonFramework.utils.execJS.MicroserviceByNodeJS import MicroServiceByNodeJS

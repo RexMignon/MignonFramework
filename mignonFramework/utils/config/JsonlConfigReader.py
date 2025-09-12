@@ -112,9 +112,21 @@ class _ConfigList(Generic[T]):
     def __len__(self) -> int:
         return len(self._data)
 
+    def copy(self):
+        return self._data.copy()
+
     def __iter__(self):
         for i in range(len(self)):
             yield self[i]
+
+    def remove(self, item):
+        self._data.remove(self._unwrap_item(item))
+        self._save_callback()
+
+    def pop(self, index: int = -1) -> T:
+        unwrapped_value = self._data.pop(index)
+        self._save_callback()
+        return self._wrap_item(unwrapped_value)
 
     def append(self, item: Any):
         self._data.append(self._unwrap_item(item))
@@ -126,6 +138,85 @@ class _ConfigList(Generic[T]):
 
     def __repr__(self) -> str:
         return f"<ConfigList wrapping {self._data}>"
+
+    def extend(self, iterable):
+        for item in iterable:
+            self._data.append(self._unwrap_item(item))
+        self._save_callback()
+
+    def insert(self, index: int, item: Any):
+        self._data.insert(index, self._unwrap_item(item))
+        self._save_callback()
+
+    def index(self, value, start=0, stop=9223372036854775807): # 9223372036854775807是sys.maxsize
+        return self._data.index(self._unwrap_item(value), start, stop)
+
+    def count(self, value):
+        return self._data.count(self._unwrap_item(value))
+
+    def reverse(self):
+        self._data.reverse()
+        self._save_callback()
+
+    def sort(self, key=None, reverse=False):
+        # 对内部数据进行排序，如果提供了key，则对key进行解包
+        if key:
+            wrapped_key = lambda item: self._unwrap_item(key(self._wrap_item(item)))
+            self._data.sort(key=wrapped_key, reverse=reverse)
+        else:
+            self._data.sort(reverse=reverse)
+        self._save_callback()
+
+    def __add__(self, other):
+        # 返回一个新的_ConfigList实例
+        new_data = self._data + self._unwrap_item(other)
+        return _ConfigList(new_data, self._save_callback, self._item_cls)
+
+    def __radd__(self, other):
+        # 允许左边的操作数是其他类型
+        new_data = self._unwrap_item(other) + self._data
+        return _ConfigList(new_data, self._save_callback, self._item_cls)
+
+    def __iadd__(self, other):
+        # 原地加法
+        self.extend(other)
+        return self
+
+    def __mul__(self, n: int):
+        new_data = self._data * n
+        return _ConfigList(new_data, self._save_callback, self._item_cls)
+
+    def __rmul__(self, n: int):
+        return self.__mul__(n)
+
+    def __imul__(self, n: int):
+        self._data *= n
+        self._save_callback()
+        return self
+
+    def __contains__(self, item: Any) -> bool:
+        return self._unwrap_item(item) in self._data
+
+    def __eq__(self, other: Any) -> bool:
+        return self._data == self._unwrap_item(other)
+
+    def __ne__(self, other: Any) -> bool:
+        return self._data != self._unwrap_item(other)
+
+    def __lt__(self, other: Any) -> bool:
+        return self._data < self._unwrap_item(other)
+
+    def __le__(self, other: Any) -> bool:
+        return self._data <= self._unwrap_item(other)
+
+    def __gt__(self, other: Any) -> bool:
+        return self._data > self._unwrap_item(other)
+
+    def __ge__(self, other: Any) -> bool:
+        return self._data >= self._unwrap_item(other)
+
+    def __reversed__(self):
+        return reversed(self._data)
 
 class JsonConfigManager:
     def __init__(self, filename: str = "./resources/config/config.json", auto_generate_on_empty: bool = True):
