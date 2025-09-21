@@ -6,6 +6,7 @@ import traceback
 from datetime import datetime
 import threading
 import contextlib
+from typing import Any
 
 
 class _Colors:
@@ -256,3 +257,38 @@ class Logger:
                 raise
 
         return wrapper
+
+
+    def info(self, message: Any):
+        """记录 INFO 级别的日志到控制台和文件。"""
+        self.write_log("INFO", str(message))
+
+    def error(self, message: Any):
+        """记录 ERROR 级别的日志到控制台和文件。"""
+        self.write_log("ERROR", str(message))
+
+    def system(self, message: Any):
+        """记录 SYSTEM 级别的日志到控制台和文件。"""
+        self.write_log("SYSTEM", str(message))
+
+    def exist(self, message: Any):
+        """记录 EXIST 级别的日志到控制台和文件。"""
+        self.write_log("EXIST", str(message))
+
+    def info2file(self, message: Any):
+        """只记录 INFO 级别的日志到文件。"""
+        self.write_log_to_file_only("INFO", str(message))
+
+    def error2file(self, message: Any):
+        """只记录 ERROR 级别的日志到文件。"""
+        self.write_log_to_file_only("ERROR", str(message))
+
+    def system2file(self, message: Any):
+        """只记录 SYSTEM 级别的日志到文件。"""
+        self.write_log_to_file_only("SYSTEM", str(message))
+
+    def exist2file(self, message: Any):
+        """只记录 EXIST 级别的日志到文件。"""
+        self.write_log_to_file_only("EXIST", str(message))
+
+    # ========== 新增方法结束 ==========
