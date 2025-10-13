@@ -291,4 +291,3 @@ class Logger:
         """只记录 EXIST 级别的日志到文件。"""
         self.write_log_to_file_only("EXIST", str(message))
 
-    # ========== 新增方法结束 ==========
