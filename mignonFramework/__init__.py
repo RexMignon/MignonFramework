@@ -11,6 +11,23 @@ MysqlManager: 一个健壮的 MySQL 数据库管理器。
 GenericFileProcessor: 一个高度通用的文件到数据库ETL（提取、转换、加载）工具。
 ProcessFile: 提供一个可配置、可断点续传、高性能的通用文件处理引擎。(默认整文件为json) 它的任务是持续不断地监控一个目录，将文件进行解析、转换，并追加写入到大型结果文件中。
 """
+from mignonFramework.utils.utilClass.RunOnce import RunOnce
+import mignonFramework.utils.utilClass.color2Logo
+
+def printLogo():
+    mignonFrameworkPrint = """                                                         
+       __     __)                      \u200ARex
+      (, /|  /|   ,                         
+        / | / |     _  __   _____
+     ) /  |/  |__(_(_/_/ (_(_) / (_
+    (_/   '       .-/              
+                 (_/               
+                                 v 0.5 mignonFramework
+    
+    """
+    print(mignonFramework.utils.utilClass.color2Logo.colorize_logo(mignonFrameworkPrint))
+
+RunOnce.execute(printLogo)
 from mignonFramework.utils.Queues import QueueIter, target
 from mignonFramework.utils.Logger import Logger
 from mignonFramework.utils.config.SQLiteTracker import SQLiteTracker, TableId, injectSQLite, VarChar
@@ -34,15 +51,7 @@ from mignonFramework.utils.execJS.MicroserviceByNodeJS import MicroServiceByNode
 from mignonFramework.utils.config.JsonlConfigReader import JsonConfigManager, injectJson, ClassKey
 from mignonFramework.utils.utilClass.printDirectoryTree import print_directory_tree as printDirectoryTree
 from mignonFramework.utils.dataBaseTransfer import DatabaseTransferRunner, AbstractDatabaseTransfer, TransferConfig
-mignonFrameworkPrint = """                                                         
-   __     __)                  
-  (, /|  /|   ,                
-    / | / |     _  __   _____
- ) /  |/  |__(_(_/_/ (_(_) / (_
-(_/   '       .-/              
-             (_/               
-                             v 0.5 mignonFramework
+from mignonFramework.utils.Louru_Plus import LoguruPlus, SendLog
 
-"""
-print(mignonFrameworkPrint)
+
 
