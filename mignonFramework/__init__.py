@@ -13,6 +13,7 @@ ProcessFile: 提供一个可配置、可断点续传、高性能的通用文件�
 """
 from mignonFramework.utils.Queues import QueueIter, target
 from mignonFramework.utils.Logger import Logger
+from mignonFramework.utils.config.SQLiteTracker import SQLiteTracker, TableId, injectSQLite, VarChar
 from mignonFramework.utils.utilClass.CountLinesInFolder import count_lines_in_single_file as countSingleFileLines, count_lines_in_files as countFolderFileLines, count_lines_in_directory as countDirectoryFileLines
 from mignonFramework.utils.utilClass.Deduplicate import deduplicate_file as deduplicateFile, read_and_write_lines as readLines2otherFiles, replace_line_with_file_content as replaceLineByFile, copy_line_by_number as copyLineByNumber
 from mignonFramework.utils.utilClass.PortForwarding import start_services as portForwordRun
@@ -30,7 +31,7 @@ from mignonFramework.utils.utilClass.JSONFormatter import JSONFormatter
 from mignonFramework.utils.utilClass.SqlDDL2List import extract_column_names_from_ddl as extractDDL2List
 from mignonFramework.utils.utilClass.getJSONequals import jsonContrast
 from mignonFramework.utils.execJS.MicroserviceByNodeJS import MicroServiceByNodeJS
-from mignonFramework.utils.config.JsonlConfigReader import JsonConfigManager, injectJson
+from mignonFramework.utils.config.JsonlConfigReader import JsonConfigManager, injectJson, ClassKey
 from mignonFramework.utils.utilClass.printDirectoryTree import print_directory_tree as printDirectoryTree
 from mignonFramework.utils.dataBaseTransfer import DatabaseTransferRunner, AbstractDatabaseTransfer, TransferConfig
 mignonFrameworkPrint = """                                                         
