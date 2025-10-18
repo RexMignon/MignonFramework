@@ -13,8 +13,14 @@ ProcessFile: 提供一个可配置、可断点续传、高性能的通用文件�
 """
 from mignonFramework.utils.utilClass.RunOnce import RunOnce
 import mignonFramework.utils.utilClass.color2Logo
-
+import sys
 def printLogo():
+    is_source_script = sys.argv and sys.argv[0].lower().endswith(('.py', '.pyw'))
+
+
+    if not is_source_script:
+        return
+
     mignonFrameworkPrint = """                                                         
        __     __)                      \u200ARex
       (, /|  /|   ,                         
@@ -26,7 +32,6 @@ def printLogo():
     
     """
     print(mignonFramework.utils.utilClass.color2Logo.colorize_logo(mignonFrameworkPrint))
-
 RunOnce.execute(printLogo)
 from mignonFramework.utils.Queues import QueueIter, target
 from mignonFramework.utils.Logger import Logger
