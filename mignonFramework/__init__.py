@@ -33,6 +33,7 @@ def printLogo():
     """
     print(mignonFramework.utils.utilClass.color2Logo.colorize_logo(mignonFrameworkPrint))
 RunOnce.execute(printLogo)
+import mignonFramework.utils.BackendAugmentation.RequestsMapping as RequestsMapping
 from mignonFramework.utils.Queues import QueueIter, target
 from mignonFramework.utils.Logger import Logger
 from mignonFramework.utils.config.SQLiteTracker import SQLiteTracker, TableId, injectSQLite, VarChar

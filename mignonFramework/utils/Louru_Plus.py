@@ -4,7 +4,7 @@ import os
 import inspect
 import re
 from loguru import logger
-from typing import Union, Any
+from typing import Union, Any, Callable, Dict
 from functools import wraps
 
 
@@ -45,7 +45,10 @@ class LoguruPlus:
             logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
 
     def __init__(self, level: Union[str, int] = "INFO", enable_console: bool = True, formats: str = None,
-                 file_formats: str = None, hiddenStackTrace: bool = False):
+                 file_formats: str = None, hiddenStackTrace: bool = False,
+                 filter_: Callable[[Dict[str, Any]], bool] = None
+                 , colorize=True):
+        self.console_format: Callable[[Dict[str, Any]], Any] | None | (Dict[str, Any]) | str = None
         if self._initialized: return
         logger.remove()
 
@@ -105,19 +108,20 @@ class LoguruPlus:
                 self.console_format = formats
 
             logger.configure(extra={"module_name": "", "class_name": None, "function_name": ""})
-            logger.add(sys.stderr, level=level, format=self.console_format, colorize=True)
+            logger.add(sys.stderr, level=level, format=self.console_format, colorize=colorize, filter=filter_)
 
         logging.basicConfig(handlers=[self._InterceptHandler()], level=0, force=True)
         self.__class__._initialized = True
 
     def add_file_handler(self, name: str, path: str = "./resources/log", level: str = "INFO",
                          formats: str = None, rotation: str = "3 MB", retention: str = "10 days",
-                         compression: str = "zip"):
+                         compression: str = "zip", encoding: str = "utf-8"):
         """
         添加一个带过滤器的文件日志处理器。
         只有 record["name"] 以 `name` 参数开头的日志才会被写入。
         适用于为特定模块（如 'database', 'api'）创建独立的日志文件。
 
+        :param encoding:
         :param name: 日志文件名前缀，也用作过滤器。
         :param path: 日志文件存放目录。
         :param level: 日志级别。
@@ -144,19 +148,21 @@ class LoguruPlus:
         logger.add(
             sink=file_path_template, level=level,
             format=formatter,
-            encoding="utf-8",
+            encoding=encoding,
             rotation=rotation, retention=retention, compression=compression,
             filter=lambda record: record["name"].startswith(name)
         )
 
     def add_main_log_file(self, name: str = "main", path: str = "./resources/log", level: str = "INFO",
                           formats: str = None, rotation: str = "10 MB", retention: str = "10 days",
-                          compression: str = "zip"):
+                          compression: str = "zip", filter_: Callable[[Dict[str, Any]], bool] = None, encoding="utf-8"):
         """
         添加一个不过滤的、捕获所有日志的主日志文件处理器。
         所有流经 Loguru 的日志（包括从其他库拦截的）都会被写入。
         适用于创建应用的主日志文件。
 
+        :param encoding:
+        :param filter_:
         :param formats:
         :param name: 主日志文件名前缀。
         :param path: 日志文件存放目录。
@@ -183,10 +189,10 @@ class LoguruPlus:
         logger.add(
             sink=file_path_template, level=level,
             format=formatter,
-            encoding="utf-8",
+            encoding=encoding,
+            filter=filter_,
             rotation=rotation, retention=retention, compression=compression
         )
-
 
     def setUpLogger(self, exclude: list[str] = None, proxy_only: list[str] = None) -> None:
         """
