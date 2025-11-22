@@ -7,13 +7,11 @@ from tqdm import tqdm
 from typing import Dict, Any, Union, List
 import ast
 
-# 导入我们的新模块
 from mignonFramework.utils.config.ConfigReader import ConfigManager
 from mignonFramework.utils.BaseStateTracker import BaseStateTracker
 from mignonFramework.utils.SQLiteStateTracker import SQLiteStateTracker
 from mignonFramework.utils.MoveStateTracker import MoveStateTracker
 
-# --- 辅助函数 (已采纳你的修改) ---
 def _guide_user_for_config(config_manager: ConfigManager):
     """
     当配置文件不存在或不完整时，通过直接写入字符串模板来创建带详细注释的默认配置文件。
@@ -74,7 +72,7 @@ def run(config_path: str = './resources/config/processFile.ini'):
     """
     # 注意：这里的 section 需要和你生成的模板保持一致
     config = ConfigManager(filename=config_path, section='config')
-    settings = config.get_all_fields()
+    settings = config.getAllConfig()
 
     if not settings or not settings.get('input_dir'):
         _guide_user_for_config(config)

@@ -147,26 +147,75 @@ class _SQLiteProxyList(Generic[T]):
         cur.execute(sql)
         return cur.fetchone()[0]
 
-    def __getitem__(self, index: int) -> T:
-        if not isinstance(index, int):
-            raise TypeError("List indices must be integers.")
-        if index < 0:
-            length = self.__len__()
-            index += length
-        if index < 0 or index >= self.__len__():
-            raise IndexError("List index out of range.")
-        sql = f"SELECT * FROM \"{self._table_name}\" LIMIT 1 OFFSET ?"
-        cur = self._conn.cursor()
-        cur.execute(sql, (index,))
-        row = cur.fetchone()
-        if row:
-            return self._row_to_proxy(row)
+    def __getitem__(self, key: Union[int, slice]) -> Union[T, List[T]]:
+        """
+        【全新升级】支持整数索引和切片语法，并保证按插入顺序返回。
+        """
+        # 获取当前列表的总长度
+        length = self.__len__()
+
+        if isinstance(key, int):
+            # 处理整数索引 (e.g., my_list[3] or my_list[-1])
+            if key < 0:
+                key += length
+            # 边界检查
+            if not (0 <= key < length):
+                raise IndexError("List index out of range.")
+
+            # 使用 OFFSET 获取特定行，ORDER BY ROWID 保证顺序
+            sql = f"SELECT * FROM \"{self._table_name}\" ORDER BY ROWID ASC LIMIT 1 OFFSET ?"
+            cur = self._conn.cursor()
+            cur.execute(sql, (key,))
+            row = cur.fetchone()
+            if row:
+                return self._row_to_proxy(row)
+            else:
+                # 理论上，前面的长度检查后不应该发生，但作为保障
+                raise IndexError("List index out of range.")
+
+        elif isinstance(key, slice):
+            # 处理切片 (e.g., my_list[-10:], my_list[1:5], my_list[::-1])
+            # slice.indices 会将负数索引、None 等转换为明确的 start, stop, step
+            # 这也优雅地处理了您提到的 [-10:] 在列表总数不足10时的情况
+            start, stop, step = key.indices(length)
+
+            if step > 0:
+                # 正向切片
+                query_offset = start
+                query_limit = stop - start
+            else: # step < 0
+                # 反向切片，我们仍然正向获取所需的最小数据块，然后在内存中反转
+                # 所需的数据范围是从 stop + 1 到 start
+                query_offset = stop + 1
+                query_limit = start - (stop + 1) + 1
+
+            # 如果计算出的范围为空，直接返回空列表
+            if query_limit <= 0:
+                return []
+
+            # 明确使用 ORDER BY ROWID ASC 来保证插入顺序
+            sql = f"SELECT * FROM \"{self._table_name}\" ORDER BY ROWID ASC LIMIT ? OFFSET ?"
+            cur = self._conn.cursor()
+            cur.execute(sql, (query_limit, query_offset))
+
+            rows = cur.fetchall()
+            proxies = [self._row_to_proxy(row) for row in rows]
+
+            # 在内存中应用反向和步长
+            # 如果 step < 0, 我们需要反转从数据库中顺序取出的结果
+            if step < 0:
+                proxies.reverse()
+
+            # 最后，应用步长。
+            # 对于正向切片，是 proxies[::step]
+            # 对于反向，因为已经 reverse() 过了，所以用 proxies[::abs(step)]
+            return proxies[::abs(step)]
         else:
-            raise IndexError("List index out of range.")
+            raise TypeError("List indices must be integers or slices.")
 
     def __repr__(self) -> str:
+        # 修正 __repr__ 以避免在打印对象时触发新的数据库查询和潜在的递归
         return f"<SQLiteProxyList table='{self._table_name}'>"
-
 
 class _SQLiteProxyObject:
     """

@@ -23536,9 +23536,42 @@ var fs = require("fs");
 var path = require("path");
 var { spawnSync } = require("child_process");
 var os = require("os");
+var { createRequire } = require("module");
 app.use(bodyParser.json());
 var loadedModules = {};
 var currentScriptPath = process.argv[1];
+var arg2 = process.argv[2];
+var scriptsDir = arg2 && arg2.trim() !== "" ? path.resolve(arg2) : path.resolve(process.cwd(), "./resources/js");
+var arg3 = process.argv[3];
+var nodeModulesPath = arg3 && arg3.trim() !== "" ? path.resolve(arg3) : null;
+var urlBase = process.argv[4];
+var port = 3e3;
+var listenAddress = "0.0.0.0";
+if (urlBase) {
+  try {
+    const url = new URL(urlBase);
+    if (url.port) {
+      port = parseInt(url.port, 10);
+    } else {
+      port = url.protocol === "https:" ? 443 : 80;
+    }
+  } catch (e) {
+    port = process.env.PORT || 3e3;
+  }
+} else {
+  port = process.env.PORT || 3e3;
+}
+if (nodeModulesPath) {
+  if (fs.existsSync(nodeModulesPath)) {
+    console.log(`Setting up NODE_PATH to: ${nodeModulesPath}`);
+    process.env.NODE_PATH = nodeModulesPath + (process.env.NODE_PATH ? path.delimiter + process.env.NODE_PATH : "");
+    require("module")._initPaths();
+  } else {
+    console.warn(`Warning: Specified node_modules directory not found: ${nodeModulesPath}`);
+  }
+} else {
+  console.log("No specific node_modules path provided, using default Node.js module resolution.");
+}
 function loadScripts(directory) {
   if (!fs.existsSync(directory)) {
     console.error(`Error: Directory not found: ${directory}`);
@@ -23550,7 +23583,6 @@ function loadScripts(directory) {
       const moduleName = path.basename(file, ext);
       const scriptPath = path.join(directory, file);
       if (path.resolve(scriptPath) === path.resolve(__filename)) {
-        console.log(`Skipping server file: ${file}`);
         return;
       }
       try {
@@ -23558,17 +23590,12 @@ function loadScripts(directory) {
         const module = { exports: {} };
         const __dirname = path.dirname(scriptPath);
         const __filename = scriptPath;
-        const localRequire = (moduleId) => {
-          if (path.isAbsolute(moduleId) || !moduleId.startsWith(".")) {
-            return require(moduleId);
-          }
-          const resolvedPath = path.resolve(__dirname, moduleId);
-          return require(resolvedPath);
-        };
+        const scriptRequire = createRequire(scriptPath);
         const wrappedCode = `(function(exports, require, module, __filename, __dirname) {
                     ${scriptCode}
-                })(module.exports, localRequire, module, __filename, __dirname);`;
-        eval(wrappedCode);
+                })`;
+        const factory = eval(wrappedCode);
+        factory(module.exports, scriptRequire, module, __filename, __dirname);
         loadedModules[moduleName] = module.exports;
         console.log(`Loaded module: ${moduleName}`);
       } catch (e) {
@@ -23577,8 +23604,6 @@ function loadScripts(directory) {
     }
   });
 }
-var scriptsDir = process.argv[2] ? path.resolve(process.argv[2]) : path.resolve(process.cwd(), "./resources/js");
-var port = process.argv[3] ? parseInt(process.argv[3]) : process.env.PORT || 3e3;
 loadScripts(scriptsDir);
 app.post("/:filename/invoke", async (req, res) => {
   try {
@@ -23603,10 +23628,13 @@ app.get("/status", (req, res) => {
   res.json({ status: "running", service_name: "js_invoker_microservice" });
 });
 app.listen(port, "0.0.0.0", () => {
-  const listenAddress = "0.0.0.0";
-  console.log(`Namespaced invoker service is running on http://${listenAddress}:${port}`);
+  const listenAddress2 = "0.0.0.0";
+  console.log(`Namespaced invoker service is running on http://${listenAddress2}:${port}`);
   console.log(`Scanning directory: ${scriptsDir}`);
-  if (listenAddress === "0.0.0.0") {
+  console.log("scanned result:");
+  console.log(loadedModules);
+  console.log("If the result is missing, please check whether the module has the same name and whether there are exports before the method.");
+  if (listenAddress2 === "0.0.0.0") {
     const networkInterfaces = os.networkInterfaces();
     const localIps = /* @__PURE__ */ new Set();
     localIps.add("127.0.0.1");
@@ -23614,15 +23642,12 @@ app.listen(port, "0.0.0.0", () => {
       const ifaces = networkInterfaces[interfaceName];
       for (const iface of ifaces) {
         if (iface.family === "IPv4" && !iface.internal) {
-          if (iface.address.startsWith("192.168.")) {
+          if (iface.address.startsWith("192.168.") || iface.address.startsWith("10.") || iface.address.startsWith("172.")) {
             localIps.add(iface.address);
           }
         }
       }
     }
-    console.log("scanned result:");
-    console.log(loadedModules);
-    console.log("If the result is missing, please check whether the module has the same name and whether there are exports before the method.");
     const sortedLocalIps = Array.from(localIps).sort();
     console.log("--- Local network address ---");
     sortedLocalIps.forEach((ip) => {

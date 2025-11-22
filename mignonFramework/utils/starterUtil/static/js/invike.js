@@ -5,12 +5,64 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const os = require('os');
+// 引入内置的 createRequire
+const { createRequire } = require('module');
 
 app.use(bodyParser.json());
 const loadedModules = {};
 
 // 动态获取当前脚本的路径
 const currentScriptPath = process.argv[1];
+
+// 命令行参数处理
+// process.argv[2]: scriptsDir
+// process.argv[3]: node_modules_path (可能是空字符串 "")
+// process.argv[4]: url_base
+
+const arg2 = process.argv[2];
+// 如果 arg2 是空字符串，回退到默认目录
+const scriptsDir = (arg2 && arg2.trim() !== '') ? path.resolve(arg2) : path.resolve(process.cwd(), './resources/js');
+
+const arg3 = process.argv[3];
+// 【核心逻辑】：如果 arg3 是空字符串 ""，则 nodeModulesPath 为 null。
+// 这样后续代码就会跳过 NODE_PATH 设置，实现你想要的"默认扫"(Node原生递归查找)。
+const nodeModulesPath = (arg3 && arg3.trim() !== '') ? path.resolve(arg3) : null;
+
+const urlBase = process.argv[4];
+
+let port = 3000;
+let listenAddress = '0.0.0.0';
+
+// 解析端口
+if (urlBase) {
+    try {
+        const url = new URL(urlBase);
+        if (url.port) {
+            port = parseInt(url.port, 10);
+        } else {
+            port = (url.protocol === 'https:') ? 443 : 80;
+        }
+    } catch (e) {
+        port = process.env.PORT || 3000;
+    }
+} else {
+    port = process.env.PORT || 3000;
+}
+
+// 设置 NODE_PATH
+// 只有当 nodeModulesPath 真的存在时才设置，否则完全保留 Node.js 原生行为
+if (nodeModulesPath) {
+    if (fs.existsSync(nodeModulesPath)) {
+        console.log(`Setting up NODE_PATH to: ${nodeModulesPath}`);
+        process.env.NODE_PATH = nodeModulesPath + (process.env.NODE_PATH ? path.delimiter + process.env.NODE_PATH : '');
+        require('module')._initPaths();
+    } else {
+        console.warn(`Warning: Specified node_modules directory not found: ${nodeModulesPath}`);
+    }
+} else {
+    // 这就是你要的：不设置 NODE_PATH，让它默认去扫
+    console.log("No specific node_modules path provided, using default Node.js module resolution.");
+}
 
 function loadScripts(directory) {
     if (!fs.existsSync(directory)) {
@@ -25,7 +77,6 @@ function loadScripts(directory) {
 
             // 跳过服务器文件
             if (path.resolve(scriptPath) === path.resolve(__filename)) {
-                console.log(`Skipping server file: ${file}`);
                 return;
             }
 
@@ -35,29 +86,24 @@ function loadScripts(directory) {
                 const __dirname = path.dirname(scriptPath);
                 const __filename = scriptPath;
 
-                // **核心修改：创建一个本地的 require 函数**
-                // 这个函数会以当前被加载的脚本的目录 (__dirname) 为基准来解析相对路径。
-                const localRequire = (moduleId) => {
-                    // 如果是绝对路径或者不是以 '.' 开头的（比如 npm 包名），
-                    // 就使用 Node.js 全局的 require 来处理。
-                    if (path.isAbsolute(moduleId) || !moduleId.startsWith('.')) {
-                        return require(moduleId); // 使用全局的 require
-                    }
-                    // 如果是相对路径 (例如 './module' 或 '../module')，
-                    // 则根据当前脚本的 __dirname 来解析其绝对路径。
-                    const resolvedPath = path.resolve(__dirname, moduleId);
-                    // 然后用全局的 require 加载这个解析出的绝对路径模块。
-                    return require(resolvedPath);
-                };
+                // **核心修改：使用 createRequire**
+                // 创建一个专属的 require，基准路径锚定在 scriptPath
+                // 这样它就会自动去该脚本所在的目录查找 node_modules，完全符合原生行为
+                const scriptRequire = createRequire(scriptPath);
 
-                // 修正：将 __dirname, __filename 和 **localRequire** 注入 eval 的上下文
+                // 构造一个函数工厂，而不是直接 eval 执行
+                // 这样我们可以把 scriptRequire 干净地注入进去
                 const wrappedCode = `(function(exports, require, module, __filename, __dirname) {
                     ${scriptCode}
-                })(module.exports, localRequire, module, __filename, __dirname);`; // <-- 注意这里将 localRequire 传递给 eval 里的 require
+                })`;
 
-                eval(wrappedCode);
+                // eval 返回这个函数
+                const factory = eval(wrappedCode);
+
+                // 执行函数，传入我们要注入的 scriptRequire
+                factory(module.exports, scriptRequire, module, __filename, __dirname);
+
                 loadedModules[moduleName] = module.exports;
-
                 console.log(`Loaded module: ${moduleName}`);
             } catch (e) {
                 console.error(`Error loading script ${file}: ${e.message}`);
@@ -66,10 +112,7 @@ function loadScripts(directory) {
     });
 }
 
-const scriptsDir = process.argv[2] ? path.resolve(process.argv[2]) : path.resolve(process.cwd(), './resources/js');
-const port = process.argv[3] ? parseInt(process.argv[3]) : (process.env.PORT || 3000);
 loadScripts(scriptsDir);
-
 
 app.post('/:filename/invoke', async (req, res) => {
     try {
@@ -96,30 +139,30 @@ app.get('/status', (req, res) => {
     res.json({ status: 'running', service_name: 'js_invoker_microservice' });
 });
 
-
 app.listen(port, '0.0.0.0', () => {
     const listenAddress = '0.0.0.0';
     console.log(`Namespaced invoker service is running on http://${listenAddress}:${port}`);
     console.log(`Scanning directory: ${scriptsDir}`);
+
+    console.log("scanned result:")
+    console.log(loadedModules)
+    console.log("If the result is missing, please check whether the module has the same name and whether there are exports before the method.")
+
     if (listenAddress === '0.0.0.0') {
         const networkInterfaces = os.networkInterfaces();
         const localIps = new Set();
-
         localIps.add('127.0.0.1');
 
         for (const interfaceName in networkInterfaces) {
             const ifaces = networkInterfaces[interfaceName];
             for (const iface of ifaces) {
                 if (iface.family === 'IPv4' && !iface.internal) {
-                    if (iface.address.startsWith('192.168.')) {
+                    if (iface.address.startsWith('192.168.') || iface.address.startsWith('10.') || iface.address.startsWith('172.')) {
                         localIps.add(iface.address);
                     }
                 }
             }
         }
-        console.log("scanned result:")
-        console.log(loadedModules)
-        console.log("If the result is missing, please check whether the module has the same name and whether there are exports before the method.")
         const sortedLocalIps = Array.from(localIps).sort();
 
         console.log('--- Local network address ---');

@@ -49,7 +49,7 @@ class LoguruPlus:
                  filter_: Callable[[Dict[str, Any]], bool] = None
                  , colorize=True):
         self.console_format: Callable[[Dict[str, Any]], Any] | None | (Dict[str, Any]) | str = None
-        if self._initialized: return
+
         logger.remove()
 
         self.hiddenStackTrace = hiddenStackTrace
@@ -109,9 +109,11 @@ class LoguruPlus:
 
             logger.configure(extra={"module_name": "", "class_name": None, "function_name": ""})
             logger.add(sys.stderr, level=level, format=self.console_format, colorize=colorize, filter=filter_)
-
+        if self._initialized: return
         logging.basicConfig(handlers=[self._InterceptHandler()], level=0, force=True)
+
         self.__class__._initialized = True
+
 
     def add_file_handler(self, name: str, path: str = "./resources/log", level: str = "INFO",
                          formats: str = None, rotation: str = "3 MB", retention: str = "10 days",
